@@ -58,7 +58,8 @@ class SoloSafeAccessibilityService : AccessibilityService() {
 
         // Strategy 1: GLOBAL_ACTION_ANSWER_CALL (Android 8+, most reliable)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val success = performGlobalAction(GLOBAL_ACTION_ANSWER_CALL)
+            // GLOBAL_ACTION_ANSWER_CALL = 11 (added in API 26)
+            val success = performGlobalAction(11)
             if (success) {
                 lastAnsweredTime = now
                 Log.d("SoloSafe", "AUTO-ANSWERED via GLOBAL_ACTION_ANSWER_CALL")
