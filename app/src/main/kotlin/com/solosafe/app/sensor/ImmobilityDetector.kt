@@ -46,8 +46,9 @@ class ImmobilityDetector(
     private var lastMovementTime = System.currentTimeMillis()
     private var inPreAlarm = false
 
-    // Movement threshold — if G changes more than this, person is moving
-    private val movementThreshold = 0.15f
+    // Movement threshold — must be high enough to ignore sensor noise on a still table
+    // 0.15 is too sensitive, 0.4 filters out noise while detecting real movement
+    private val movementThreshold = 0.4f
 
     fun start() {
         if (isRunning) return
@@ -108,6 +109,7 @@ class ImmobilityDetector(
                 delay(5000) // Check every 5 seconds
 
                 val immobileFor = (System.currentTimeMillis() - lastMovementTime) / 1000
+                Log.d("SoloSafe", "Immobility check: ${immobileFor}s / ${thresholds.immobilityPreAlarmSec}s (preAlarm=$inPreAlarm)")
 
                 if (!inPreAlarm && immobileFor >= thresholds.immobilityPreAlarmSec) {
                     // Pre-alarm: vibrate
