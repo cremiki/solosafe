@@ -401,8 +401,14 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(operatorName, color = TextSecondary, fontSize = 13.sp)
                     Spacer(modifier = Modifier.width(8.dp))
-                    IconButton(onClick = onOpenSettings, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.Settings, contentDescription = "Impostazioni", tint = TextSecondary, modifier = Modifier.size(20.dp))
+                    IconButton(
+                        onClick = onOpenSettings,
+                        modifier = Modifier.size(32.dp),
+                        enabled = appState == ScreenState.STANDBY,
+                    ) {
+                        Icon(Icons.Default.Settings, contentDescription = "Impostazioni",
+                            tint = if (appState == ScreenState.STANDBY) TextSecondary else Color(0xFF2A2D3E),
+                            modifier = Modifier.size(20.dp))
                     }
                 }
             }
@@ -426,70 +432,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                         Text("ATTIVA PROTEZIONE", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White)
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Authorized numbers section
-                    OutlinedButton(
-                        onClick = { showAuthNumbers = !showAuthNumbers },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
-                    ) {
-                        Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Numeri autorizzati (${authNumbers.size})", fontSize = 13.sp)
-                    }
-
-                    if (showAuthNumbers) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = Surface,
-                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                authNumbers.forEach { number ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text(number, color = TextPrimary, fontSize = 14.sp)
-                                        IconButton(
-                                            onClick = {
-                                                authNumbers = authNumbers - number
-                                                prefs.edit().putString("authorized_numbers", authNumbers.joinToString(",")).commit()
-                                            },
-                                            modifier = Modifier.size(28.dp),
-                                        ) {
-                                            Icon(Icons.Default.Close, contentDescription = "Rimuovi", tint = Alarm, modifier = Modifier.size(16.dp))
-                                        }
-                                    }
-                                }
-                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    OutlinedTextField(
-                                        value = newNumber,
-                                        onValueChange = { newNumber = it },
-                                        placeholder = { Text("+39 333 1234567", fontSize = 12.sp) },
-                                        modifier = Modifier.weight(1f).height(48.dp),
-                                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = TextPrimary),
-                                        singleLine = true,
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    IconButton(
-                                        onClick = {
-                                            if (newNumber.isNotBlank()) {
-                                                authNumbers = authNumbers + newNumber.trim()
-                                                prefs.edit().putString("authorized_numbers", authNumbers.joinToString(",")).commit()
-                                                newNumber = ""
-                                            }
-                                        },
-                                    ) {
-                                        Icon(Icons.Default.Add, contentDescription = "Aggiungi", tint = Protected)
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // Authorized numbers moved to Settings
                 }
 
                 ScreenState.PROTECTED -> {
