@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SoloSafe</string>
+    <string name="notification_channel_service">Servizio SoloSafe</string>
+    <string name="notification_channel_alarm">Allarmi SoloSafe</string>
+    <string name="state_standby">In standby</string>
+    <string name="state_protected">Protetto</string>
+    <string name="activate_protection">Attiva protezione</string>
+    <string name="end_protection">Termina protezione</string>
+    <string name="sos_button">SOS</string>
+    <string name="driving_mode">Sto guidando</string>
+    <string name="session_shift">Turno</string>
+    <string name="session_intervention">Intervento</string>
+    <string name="session_continuous">Continua</string>
+    <string name="session_confined">Spazio Confinato</string>
+    <string name="scan_qr">Scansiona il QR di configurazione</string>
+    <string name="select_session_type">Seleziona tipo sessione</string>
+    <string name="select_duration">Durata prevista</string>
+    <string name="confirm_start">Conferma e avvia</string>
+    <string name="hours_4">4 ore</string>
+    <string name="hours_8">8 ore</string>
+    <string name="hours_12">12 ore</string>
+    <string name="custom_duration">Personalizzata</string>
+    <string name="battery">Batteria</string>
+    <string name="connection">Connessione</string>
+    <string name="last_heartbeat">Ultimo heartbeat</string>
+</resources>
