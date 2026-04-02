@@ -21,16 +21,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.solosafe.app.SoloSafeApp
 import com.solosafe.app.data.remote.SupabaseClient
+import com.solosafe.app.sensor.FallDetector
+import com.solosafe.app.sensor.ImmobilityDetector
+import com.solosafe.app.sensor.PresetThresholds
 import com.solosafe.app.service.SoloSafeService
 import com.solosafe.app.service.HeartbeatWorker
 import com.solosafe.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 
 private enum class ScreenState { STANDBY, PROTECTED, SOS_SENT }
+private enum class PreAlarmType { NONE, FALL, IMMOBILITY }
 
 @Composable
 fun SimpleMainScreen() {
@@ -52,8 +57,83 @@ fun SimpleMainScreen() {
     var showSessionDialog by remember { mutableStateOf(false) }
     var sosMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+    var preAlarmType by remember { mutableStateOf(PreAlarmType.NONE) }
+    var preAlarmCountdown by remember { mutableIntStateOf(30) }
 
     val supabase = remember { SupabaseClient() }
+    val thresholds = remember { PresetThresholds.forPreset(defaultPreset) }
+    val fallDetector = remember { FallDetector(context, thresholds) }
+    val immobilityDetector = remember { ImmobilityDetector(context, thresholds) }
+
+    // Collect fall detector events
+    LaunchedEffect(Unit) {
+        fallDetector.events.collect { event ->
+            when (event) {
+                is FallDetector.Event.PreAlarm -> {
+                    preAlarmType = PreAlarmType.FALL
+                    preAlarmCountdown = 30
+                }
+                is FallDetector.Event.Alarm -> {
+                    preAlarmType = PreAlarmType.NONE
+                    // Send real alarm
+                    try {
+                        withContext(Dispatchers.IO) {
+                            supabase.sendAlarm(operatorId, companyId, "FALL", null, null)
+                        }
+                        appState = ScreenState.SOS_SENT
+                        sosMessage = "Allarme caduta inviato!"
+                    } catch (_: Exception) {}
+                }
+                is FallDetector.Event.Cancelled -> {
+                    preAlarmType = PreAlarmType.NONE
+                }
+            }
+        }
+    }
+
+    // Collect immobility detector events
+    LaunchedEffect(Unit) {
+        immobilityDetector.events.collect { event ->
+            when (event) {
+                is ImmobilityDetector.Event.PreAlarm -> {
+                    preAlarmType = PreAlarmType.IMMOBILITY
+                    preAlarmCountdown = 30
+                }
+                is ImmobilityDetector.Event.Alarm -> {
+                    preAlarmType = PreAlarmType.NONE
+                    try {
+                        withContext(Dispatchers.IO) {
+                            supabase.sendAlarm(operatorId, companyId, "IMMOBILITY", null, null)
+                        }
+                        appState = ScreenState.SOS_SENT
+                        sosMessage = "Allarme immobilità inviato!"
+                    } catch (_: Exception) {}
+                }
+                is ImmobilityDetector.Event.Cancelled -> {
+                    preAlarmType = PreAlarmType.NONE
+                }
+            }
+        }
+    }
+
+    // Pre-alarm countdown timer
+    LaunchedEffect(preAlarmType) {
+        if (preAlarmType != PreAlarmType.NONE) {
+            preAlarmCountdown = 30
+            while (preAlarmCountdown > 0) {
+                delay(1000)
+                preAlarmCountdown--
+            }
+        }
+    }
+
+    // Cleanup detectors on dispose
+    DisposableEffect(Unit) {
+        onDispose {
+            fallDetector.destroy()
+            immobilityDetector.destroy()
+        }
+    }
 
     // Service NOT started automatically — only when user presses "Attiva Protezione"
     // HeartbeatWorker scheduled in standby mode (no foreground service needed for WorkManager)
@@ -83,6 +163,7 @@ fun SimpleMainScreen() {
                             appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis()
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
                             HeartbeatWorker.scheduleProtected(context)
+                            fallDetector.start(); immobilityDetector.start()
                         }
                     }
                     SessionOption("Turno 4 ore", "turno", 4) { type, hours ->
@@ -91,6 +172,7 @@ fun SimpleMainScreen() {
                             appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis()
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
                             HeartbeatWorker.scheduleProtected(context)
+                            fallDetector.start(); immobilityDetector.start()
                         }
                     }
                     SessionOption("Continua (H24)", "continua", 0) { type, _ ->
@@ -99,6 +181,7 @@ fun SimpleMainScreen() {
                             appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis()
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
                             HeartbeatWorker.scheduleProtected(context)
+                            fallDetector.start(); immobilityDetector.start()
                         }
                     }
                 }
@@ -107,6 +190,55 @@ fun SimpleMainScreen() {
             dismissButton = {
                 TextButton(onClick = { showSessionDialog = false }) {
                     Text("Annulla", color = TextSecondary)
+                }
+            },
+        )
+    }
+
+    // Pre-alarm dialog — "Stai bene?"
+    if (preAlarmType != PreAlarmType.NONE) {
+        AlertDialog(
+            onDismissRequest = { /* can't dismiss by tapping outside */ },
+            containerColor = Color(0xFF1A0000),
+            title = {
+                Text(
+                    if (preAlarmType == PreAlarmType.FALL) "Caduta rilevata!" else "Sei immobile da troppo tempo!",
+                    color = Alarm,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                )
+            },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Text("Stai bene?", color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "Allarme automatico tra ${preAlarmCountdown}s",
+                        color = Alarm,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LinearProgressIndicator(
+                        progress = { preAlarmCountdown / 30f },
+                        modifier = Modifier.fillMaxWidth().height(6.dp),
+                        color = Alarm,
+                        trackColor = Color(0xFF2A0000),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        fallDetector.cancelAlarm()
+                        immobilityDetector.cancelAlarm()
+                        preAlarmType = PreAlarmType.NONE
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Protected),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                ) {
+                    Text("SÌ, STO BENE", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White)
                 }
             },
         )
@@ -211,6 +343,7 @@ fun SimpleMainScreen() {
                                     Log.e("SoloSafe", "End session error: ${e.message}")
                                 }
                             }
+                            fallDetector.stop(); immobilityDetector.stop()
                             try { SoloSafeService.startStandby(context) } catch (_: Exception) {}
                             HeartbeatWorker.scheduleStandby(context)
                         },
