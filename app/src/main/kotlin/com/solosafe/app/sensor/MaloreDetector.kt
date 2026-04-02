@@ -19,7 +19,7 @@ import kotlin.math.sqrt
  * Then monitors: if orientation deviates > 45° from baseline AND stays immobile > 10s → pre-alarm.
  * No response in 30s → full alarm (MAN_DOWN).
  */
-class ManDownDetector(
+class MaloreDetector(
     private val context: Context,
 ) : SensorEventListener {
 
@@ -67,7 +67,7 @@ class ManDownDetector(
             calibrationSamples.clear()
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
             isRunning = true
-            Log.d("SoloSafe", "ManDownDetector: calibrating for 3s...")
+            Log.d("SoloSafe", "MaloreDetector: calibrating for 3s...")
             scope.launch { _events.emit(Event.Calibrating) }
 
             // After 3s, finalize calibration
@@ -86,7 +86,7 @@ class ManDownDetector(
         isRunning = false
         isCalibrating = false
         preAlarmActive = false
-        Log.d("SoloSafe", "ManDownDetector stopped")
+        Log.d("SoloSafe", "MaloreDetector stopped")
     }
 
     fun cancelAlarm() {
@@ -96,7 +96,7 @@ class ManDownDetector(
         isDeviated = false
         startMonitoring()
         scope.launch { _events.emit(Event.Cancelled) }
-        Log.d("SoloSafe", "ManDownDetector alarm cancelled")
+        Log.d("SoloSafe", "MaloreDetector alarm cancelled")
     }
 
     private fun finalizeCalibration() {
@@ -107,9 +107,9 @@ class ManDownDetector(
             val avgY = calibrationSamples.map { it[1] }.average().toFloat()
             val avgZ = calibrationSamples.map { it[2] }.average().toFloat()
             baselineVector = floatArrayOf(avgX, avgY, avgZ)
-            Log.d("SoloSafe", "ManDownDetector calibrated: baseline=(${avgX}, ${avgY}, ${avgZ})")
+            Log.d("SoloSafe", "MaloreDetector calibrated: baseline=(${avgX}, ${avgY}, ${avgZ})")
         } else {
-            Log.w("SoloSafe", "ManDownDetector: not enough samples, using default baseline")
+            Log.w("SoloSafe", "MaloreDetector: not enough samples, using default baseline")
         }
         scope.launch { _events.emit(Event.Ready) }
         startMonitoring()
@@ -157,7 +157,7 @@ class ManDownDetector(
                     if (elapsed >= deviationHoldSec) {
                         // Pre-alarm
                         preAlarmActive = true
-                        Log.d("SoloSafe", "ManDown pre-alarm: deviated ${elapsed}s + immobile")
+                        Log.d("SoloSafe", "Malore pre-alarm: deviated ${elapsed}s + immobile")
                         _events.emit(Event.PreAlarm)
 
                         // Wait for response
@@ -166,7 +166,7 @@ class ManDownDetector(
                         if (preAlarmActive) {
                             // No response → full alarm
                             preAlarmActive = false
-                            Log.d("SoloSafe", "ManDown ALARM: no response after ${alarmTimeoutSec}s")
+                            Log.d("SoloSafe", "Malore ALARM: no response after ${alarmTimeoutSec}s")
                             _events.emit(Event.Alarm)
                         }
                     }
