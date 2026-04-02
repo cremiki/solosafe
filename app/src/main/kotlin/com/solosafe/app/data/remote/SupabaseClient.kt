@@ -120,11 +120,31 @@ class SupabaseClient @Inject constructor() {
         }
     }
 
+    /** Get authorized phone numbers for an operator (emergency contacts) */
+    suspend fun getAuthorizedPhones(operatorId: String): List<String> = withContext(Dispatchers.IO) {
+        try {
+            client.from("emergency_contacts")
+                .select {
+                    filter { eq("operator_id", operatorId) }
+                }
+                .decodeList<EmergencyContact>()
+                .map { it.phone }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
     @Serializable
     data class SessionResponse(val id: String)
 
     @Serializable
     data class AlarmResponse(val id: String)
+
+    @Serializable
+    data class EmergencyContact(
+        val phone: String,
+        val name: String = "",
+    )
 
     @Serializable
     data class OperatorConfig(
