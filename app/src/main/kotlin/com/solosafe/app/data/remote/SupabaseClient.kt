@@ -1,5 +1,6 @@
 package com.solosafe.app.data.remote
 
+import android.util.Log
 import com.solosafe.app.BuildConfig
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.auth.Auth
@@ -117,6 +118,25 @@ class SupabaseClient @Inject constructor() {
                 .decodeSingleOrNull<OperatorConfig>()
         } catch (e: Exception) {
             null
+        }
+    }
+
+    /** Log a settings change to Supabase */
+    suspend fun logConfigChange(
+        operatorId: String, companyId: String,
+        paramName: String, oldValue: String, newValue: String,
+    ) = withContext(Dispatchers.IO) {
+        try {
+            client.from("app_config_log").insert(buildJsonObject {
+                put("operator_id", operatorId)
+                put("company_id", companyId)
+                put("change_type", "settings")
+                put("param_name", paramName)
+                put("old_value", oldValue)
+                put("new_value", newValue)
+            })
+        } catch (e: Exception) {
+            Log.w("SoloSafe", "Config log failed: ${e.message}")
         }
     }
 

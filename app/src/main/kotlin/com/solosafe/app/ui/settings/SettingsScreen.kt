@@ -55,6 +55,15 @@ fun SettingsScreen(onBack: () -> Unit) {
     val operatorName = prefs.getString("operator_name", "—") ?: "—"
     val preset = prefs.getString("default_preset", "—") ?: "—"
     val operatorId = prefs.getString(SoloSafeApp.KEY_OPERATOR_ID, "") ?: ""
+    val companyId = prefs.getString("company_id", "") ?: ""
+
+    fun logChange(param: String, oldVal: String, newVal: String) {
+        if (oldVal != newVal) {
+            scope.launch {
+                try { supabase.logConfigChange(operatorId, companyId, param, oldVal, newVal) } catch (_: Exception) {}
+            }
+        }
+    }
 
     fun savePrefs() {
         prefs.edit()
@@ -101,7 +110,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                         Text("Malore / Man Down", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         Text("Cambio orientamento + immobilità", color = TextSecondary, fontSize = 11.sp)
                     }
-                    Switch(checked = manDownEnabled, onCheckedChange = { manDownEnabled = it; savePrefs() },
+                    Switch(checked = manDownEnabled, onCheckedChange = { logChange("malore_enabled", manDownEnabled.toString(), it.toString()); manDownEnabled = it; savePrefs() },
                         colors = SwitchDefaults.colors(checkedThumbColor = SoloSafeRed, checkedTrackColor = SoloSafeRed.copy(alpha = 0.3f)))
                 }
                 if (manDownEnabled) {
@@ -120,7 +129,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                         Text("Caduta (Fall Detection)", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         Text("Picco accelerometro", color = TextSecondary, fontSize = 11.sp)
                     }
-                    Switch(checked = fallEnabled, onCheckedChange = { fallEnabled = it; savePrefs() },
+                    Switch(checked = fallEnabled, onCheckedChange = { logChange("fall_enabled", fallEnabled.toString(), it.toString()); fallEnabled = it; savePrefs() },
                         colors = SwitchDefaults.colors(checkedThumbColor = SoloSafeRed, checkedTrackColor = SoloSafeRed.copy(alpha = 0.3f)))
                 }
                 if (fallEnabled) {
@@ -139,7 +148,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                         Text("Immobilità", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         Text("Fermo troppo a lungo", color = TextSecondary, fontSize = 11.sp)
                     }
-                    Switch(checked = immobilityEnabled, onCheckedChange = { immobilityEnabled = it; savePrefs() },
+                    Switch(checked = immobilityEnabled, onCheckedChange = { logChange("immobility_enabled", immobilityEnabled.toString(), it.toString()); immobilityEnabled = it; savePrefs() },
                         colors = SwitchDefaults.colors(checkedThumbColor = SoloSafeRed, checkedTrackColor = SoloSafeRed.copy(alpha = 0.3f)))
                 }
                 if (immobilityEnabled) {
