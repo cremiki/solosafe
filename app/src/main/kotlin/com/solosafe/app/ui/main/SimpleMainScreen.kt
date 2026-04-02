@@ -61,6 +61,9 @@ fun SimpleMainScreen() {
     var isLoading by remember { mutableStateOf(false) }
     var preAlarmType by remember { mutableStateOf(PreAlarmType.NONE) }
     var preAlarmCountdown by remember { mutableIntStateOf(30) }
+    var showAuthNumbers by remember { mutableStateOf(false) }
+    var authNumbers by remember { mutableStateOf(listOf<String>()) }
+    var newNumber by remember { mutableStateOf("") }
 
     val supabase = remember { SupabaseClient() }
     val heartbeat = remember { HeartbeatManager(context, supabase) }
@@ -181,10 +184,27 @@ fun SimpleMainScreen() {
         }
     }
 
-    // Heartbeat in standby mode (low frequency, no foreground service)
+    // Heartbeat in standby mode
     LaunchedEffect(Unit) {
         heartbeat.startStandby()
         HeartbeatManager.scheduleWorkManagerFallback(context, "standby")
+
+        // Load authorized numbers
+        val saved = prefs.getString("authorized_numbers", null)
+        if (saved != null) {
+            authNumbers = saved.split(",").filter { it.isNotBlank() }
+        }
+        // Fetch from Supabase if empty
+        if (authNumbers.isEmpty() && operatorId.isNotBlank()) {
+            try {
+                val phones = withContext(Dispatchers.IO) { supabase.getAuthorizedPhones(operatorId) }
+                if (phones.isNotEmpty()) {
+                    authNumbers = phones
+                    prefs.edit().putString("authorized_numbers", phones.joinToString(",")).commit()
+                    Log.d("SoloSafe", "Loaded ${phones.size} authorized numbers from Supabase")
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     val bgColor by animateColorAsState(
@@ -207,6 +227,7 @@ fun SimpleMainScreen() {
                         sessionType = type; sessionDurationHours = hours; showSessionDialog = false
                         startSession(scope, context, supabase, heartbeat, operatorId, companyId, defaultPreset, type, hours) {
                             appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis()
+                            prefs.edit().putString("current_state", "protected").commit()
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
                             heartbeat.startProtected()
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
@@ -217,6 +238,7 @@ fun SimpleMainScreen() {
                         sessionType = type; sessionDurationHours = hours; showSessionDialog = false
                         startSession(scope, context, supabase, heartbeat, operatorId, companyId, defaultPreset, type, hours) {
                             appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis()
+                            prefs.edit().putString("current_state", "protected").commit()
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
                             heartbeat.startProtected()
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
@@ -227,6 +249,7 @@ fun SimpleMainScreen() {
                         sessionType = type; sessionDurationHours = 0; showSessionDialog = false
                         startSession(scope, context, supabase, heartbeat, operatorId, companyId, defaultPreset, type, null) {
                             appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis()
+                            prefs.edit().putString("current_state", "protected").commit()
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
                             heartbeat.startProtected()
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
@@ -386,7 +409,7 @@ fun SimpleMainScreen() {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text("SoloSafe", color = TextPrimary, fontSize = 28.sp, fontWeight = FontWeight.Bold)
                     Text("Worker Safety", color = TextSecondary, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(48.dp))
+                    Spacer(modifier = Modifier.height(32.dp))
 
                     Button(
                         onClick = { showSessionDialog = true },
@@ -395,6 +418,71 @@ fun SimpleMainScreen() {
                         modifier = Modifier.fillMaxWidth().height(72.dp),
                     ) {
                         Text("ATTIVA PROTEZIONE", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White)
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Authorized numbers section
+                    OutlinedButton(
+                        onClick = { showAuthNumbers = !showAuthNumbers },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
+                    ) {
+                        Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Numeri autorizzati (${authNumbers.size})", fontSize = 13.sp)
+                    }
+
+                    if (showAuthNumbers) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Surface,
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                authNumbers.forEach { number ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(number, color = TextPrimary, fontSize = 14.sp)
+                                        IconButton(
+                                            onClick = {
+                                                authNumbers = authNumbers - number
+                                                prefs.edit().putString("authorized_numbers", authNumbers.joinToString(",")).commit()
+                                            },
+                                            modifier = Modifier.size(28.dp),
+                                        ) {
+                                            Icon(Icons.Default.Close, contentDescription = "Rimuovi", tint = Alarm, modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                }
+                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    OutlinedTextField(
+                                        value = newNumber,
+                                        onValueChange = { newNumber = it },
+                                        placeholder = { Text("+39 333 1234567", fontSize = 12.sp) },
+                                        modifier = Modifier.weight(1f).height(48.dp),
+                                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = TextPrimary),
+                                        singleLine = true,
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    IconButton(
+                                        onClick = {
+                                            if (newNumber.isNotBlank()) {
+                                                authNumbers = authNumbers + newNumber.trim()
+                                                prefs.edit().putString("authorized_numbers", authNumbers.joinToString(",")).commit()
+                                                newNumber = ""
+                                            }
+                                        },
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = "Aggiungi", tint = Protected)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -427,6 +515,7 @@ fun SimpleMainScreen() {
                         onClick = {
                             appState = ScreenState.STANDBY
                             sessionStart = null
+                            prefs.edit().putString("current_state", "standby").commit()
                             scope.launch {
                                 try {
                                     supabase.sendHeartbeat(operatorId, "standby", 100, null, null, null)
