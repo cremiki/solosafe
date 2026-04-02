@@ -38,11 +38,11 @@ class HeartbeatManager(
     fun startProtected() {
         stop()
         job = scope.launch {
-            Log.d("SoloSafe", "Heartbeat PROTECTED: every 5min")
+            Log.d("SoloSafe", "Heartbeat PROTECTED: every 5s (TEST MODE)")
             // Send immediately
             sendHeartbeat("protected")
             while (isActive) {
-                delay(5 * 60 * 1000L) // 5 minutes
+                delay(5 * 1000L) // 5 seconds for testing — change to 5*60*1000L for production
                 sendHeartbeat("protected")
             }
         }
