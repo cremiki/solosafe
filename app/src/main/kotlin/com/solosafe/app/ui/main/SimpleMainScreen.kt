@@ -24,6 +24,7 @@ import com.solosafe.app.data.remote.SupabaseClient
 import com.solosafe.app.sensor.AlarmSoundManager
 import com.solosafe.app.sensor.FallDetector
 import com.solosafe.app.sensor.ImmobilityDetector
+import com.solosafe.app.sensor.ManDownDetector
 import com.solosafe.app.sensor.PresetThresholds
 import com.solosafe.app.service.SoloSafeService
 import com.solosafe.app.service.HeartbeatManager
@@ -36,7 +37,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 private enum class ScreenState { STANDBY, PROTECTED, SOS_SENT }
-private enum class PreAlarmType { NONE, FALL, IMMOBILITY }
+private enum class PreAlarmType { NONE, FALL, IMMOBILITY, MAN_DOWN }
 
 @Composable
 fun SimpleMainScreen() {
@@ -67,6 +68,7 @@ fun SimpleMainScreen() {
     val thresholds = remember { PresetThresholds.forPreset(defaultPreset) }
     val fallDetector = remember { FallDetector(context, thresholds) }
     val immobilityDetector = remember { ImmobilityDetector(context, thresholds) }
+    val manDownDetector = remember { ManDownDetector(context) }
 
     // Collect fall detector events
     LaunchedEffect(Unit) {
@@ -126,6 +128,37 @@ fun SimpleMainScreen() {
         }
     }
 
+    // Collect man-down detector events
+    LaunchedEffect(Unit) {
+        manDownDetector.events.collect { event ->
+            when (event) {
+                is ManDownDetector.Event.Calibrating -> Log.d("SoloSafe", "ManDown: calibrating...")
+                is ManDownDetector.Event.Ready -> Log.d("SoloSafe", "ManDown: ready")
+                is ManDownDetector.Event.PreAlarm -> {
+                    preAlarmType = PreAlarmType.MAN_DOWN
+                    preAlarmCountdown = 30
+                    alarmSound.startPreAlarm()
+                }
+                is ManDownDetector.Event.Alarm -> {
+                    preAlarmType = PreAlarmType.NONE
+                    alarmSound.startFullAlarm()
+                    try {
+                        val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
+                        withContext(Dispatchers.IO) {
+                            supabase.sendAlarm(operatorId, companyId, "MAN_DOWN", gps?.first, gps?.second)
+                        }
+                        appState = ScreenState.SOS_SENT
+                        sosMessage = "Allarme Man Down inviato!"
+                    } catch (_: Exception) {}
+                }
+                is ManDownDetector.Event.Cancelled -> {
+                    preAlarmType = PreAlarmType.NONE
+                    alarmSound.stop()
+                }
+            }
+        }
+    }
+
     // Pre-alarm countdown timer
     LaunchedEffect(preAlarmType) {
         if (preAlarmType != PreAlarmType.NONE) {
@@ -142,6 +175,7 @@ fun SimpleMainScreen() {
         onDispose {
             fallDetector.destroy()
             immobilityDetector.destroy()
+            manDownDetector.destroy()
             heartbeat.destroy()
             alarmSound.destroy()
         }
@@ -176,7 +210,7 @@ fun SimpleMainScreen() {
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
                             heartbeat.startProtected()
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
-                            fallDetector.start(); immobilityDetector.start()
+                            fallDetector.start(); immobilityDetector.start(); manDownDetector.start()
                         }
                     }
                     SessionOption("Turno 4 ore", "turno", 4) { type, hours ->
@@ -186,7 +220,7 @@ fun SimpleMainScreen() {
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
                             heartbeat.startProtected()
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
-                            fallDetector.start(); immobilityDetector.start()
+                            fallDetector.start(); immobilityDetector.start(); manDownDetector.start()
                         }
                     }
                     SessionOption("Continua (H24)", "continua", 0) { type, _ ->
@@ -196,7 +230,7 @@ fun SimpleMainScreen() {
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
                             heartbeat.startProtected()
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
-                            fallDetector.start(); immobilityDetector.start()
+                            fallDetector.start(); immobilityDetector.start(); manDownDetector.start()
                         }
                     }
                 }
@@ -217,7 +251,11 @@ fun SimpleMainScreen() {
             containerColor = Color(0xFF1A0000),
             title = {
                 Text(
-                    if (preAlarmType == PreAlarmType.FALL) "Caduta rilevata!" else "Sei immobile da troppo tempo!",
+                    when (preAlarmType) {
+                        PreAlarmType.FALL -> "Caduta rilevata!"
+                        PreAlarmType.MAN_DOWN -> "Posizione anomala rilevata!"
+                        else -> "Sei immobile da troppo tempo!"
+                    },
                     color = Alarm,
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
@@ -247,6 +285,7 @@ fun SimpleMainScreen() {
                     onClick = {
                         fallDetector.cancelAlarm()
                         immobilityDetector.cancelAlarm()
+                        manDownDetector.cancelAlarm()
                         preAlarmType = PreAlarmType.NONE
                         alarmSound.stop()
                     },
@@ -359,7 +398,7 @@ fun SimpleMainScreen() {
                                     Log.e("SoloSafe", "End session error: ${e.message}")
                                 }
                             }
-                            fallDetector.stop(); immobilityDetector.stop()
+                            fallDetector.stop(); immobilityDetector.stop(); manDownDetector.stop()
                             heartbeat.startStandby()
                             try { SoloSafeService.startStandby(context) } catch (_: Exception) {}
                             HeartbeatManager.scheduleWorkManagerFallback(context, "standby")
