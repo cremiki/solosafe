@@ -265,15 +265,31 @@ fun SimpleMainScreen() {
             ) {
                 Spacer(modifier = Modifier.weight(0.3f))
 
+                // Alarm type label
+                Text(
+                    when (preAlarmType) {
+                        PreAlarmType.MAN_DOWN -> "CADUTA"
+                        PreAlarmType.MALORE -> "MALORE"
+                        PreAlarmType.IMMOBILITY -> "IMMOBILITÀ"
+                        else -> "ALLARME"
+                    },
+                    color = Color.White,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 4.sp,
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
                 // Warning icon
                 Icon(
                     Icons.Default.Warning,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(120.dp),
+                    modifier = Modifier.size(100.dp),
                 )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Countdown
                 Text(
