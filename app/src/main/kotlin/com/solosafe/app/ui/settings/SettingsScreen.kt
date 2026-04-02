@@ -1,12 +1,9 @@
 package com.solosafe.app.ui.settings
 
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.provider.Settings
 import android.util.Log
-import android.view.accessibility.AccessibilityManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -172,53 +169,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                     }
                     Switch(checked = true, onCheckedChange = { /* non disattivabile */ }, enabled = false,
                         colors = SwitchDefaults.colors(checkedThumbColor = Protected, checkedTrackColor = Protected.copy(alpha = 0.3f)))
-                }
-            }
-
-            // === ACCESSIBILITY SERVICE ===
-            SectionHeader("Risposta Automatica Chiamate")
-
-            SettingsCard {
-                val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
-                val isAccessibilityEnabled = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_GENERIC)
-                    .any { it.resolveInfo.serviceInfo.packageName == context.packageName }
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Servizio Accessibilità", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Text(
-                            if (isAccessibilityEnabled) "Attivo — le chiamate autorizzate verranno risposte automaticamente"
-                            else "Non attivo — abilita per la risposta automatica",
-                            color = if (isAccessibilityEnabled) Protected else Warning,
-                            fontSize = 11.sp,
-                        )
-                    }
-                    Box(
-                        modifier = Modifier.size(12.dp).background(
-                            if (isAccessibilityEnabled) Protected else Alarm,
-                            shape = RoundedCornerShape(6.dp),
-                        )
-                    )
-                }
-                if (!isAccessibilityEnabled) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Button(
-                        onClick = {
-                            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                            })
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = SoloSafeRed),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Abilita risposta automatica", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "Impostazioni → Accessibilità → SoloSafe → Attiva",
-                        color = TextSecondary, fontSize = 11.sp,
-                    )
                 }
             }
 
