@@ -117,23 +117,3 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
 }
 
-// Auto-upload build errors to server
-gradle.buildFinished {
-    val logFile = File(rootProject.projectDir, "build-output.log")
-    val errors = failure?.message ?: "BUILD SUCCESS"
-    logFile.writeText("""
-timestamp: ${java.time.Instant.now()}
-result: ${if (failure != null) "FAILED" else "SUCCESS"}
-errors:
-$errors
-""".trimIndent())
-
-    // Upload in background (non-blocking)
-    if (failure != null) {
-        try {
-            ProcessBuilder("scp", logFile.absolutePath, "root@46.224.181.59:/opt/solosafe/build-errors.txt")
-                .redirectErrorStream(true)
-                .start()
-        } catch (_: Exception) {}
-    }
-}
