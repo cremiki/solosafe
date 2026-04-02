@@ -8,7 +8,7 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         if (intent?.action == Intent.ACTION_BOOT_COMPLETED) {
             SoloSafeService.startStandby(context)
-            HeartbeatWorker.scheduleStandby(context)
+            HeartbeatManager.scheduleWorkManagerFallback(context, "standby")
         }
     }
 }

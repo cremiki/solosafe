@@ -4,7 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.solosafe.app.data.repository.SoloSafeRepository
-import com.solosafe.app.service.HeartbeatWorker
+import com.solosafe.app.service.HeartbeatManager
 import com.solosafe.app.service.SoloSafeService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,7 +63,7 @@ class SessionViewModel @Inject constructor(
         viewModelScope.launch {
             repository.startSession(type, state.preset, state.durationHours)
             SoloSafeService.startProtected(app, state.preset)
-            HeartbeatWorker.scheduleProtected(app)
+            HeartbeatManager.scheduleWorkManagerFallback(app, "protected")
         }
     }
 }

@@ -183,7 +183,7 @@ fun SimpleMainScreen() {
                     }
                     SessionOption("Continua (H24)", "continua", 0) { type, _ ->
                         sessionType = type; sessionDurationHours = 0; showSessionDialog = false
-                        startSession(scope, context, supabase, operatorId, companyId, defaultPreset, type, null) {
+                        startSession(scope, context, supabase, heartbeat, operatorId, companyId, defaultPreset, type, null) {
                             appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis()
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
                             heartbeat.startProtected()
