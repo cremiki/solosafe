@@ -25,7 +25,7 @@ import com.solosafe.app.sensor.FallDetector
 import com.solosafe.app.sensor.ImmobilityDetector
 import com.solosafe.app.sensor.PresetThresholds
 import com.solosafe.app.service.SoloSafeService
-import com.solosafe.app.service.HeartbeatWorker
+import com.solosafe.app.service.HeartbeatManager
 import com.solosafe.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -61,6 +61,7 @@ fun SimpleMainScreen() {
     var preAlarmCountdown by remember { mutableIntStateOf(30) }
 
     val supabase = remember { SupabaseClient() }
+    val heartbeat = remember { HeartbeatManager(context, supabase) }
     val thresholds = remember { PresetThresholds.forPreset(defaultPreset) }
     val fallDetector = remember { FallDetector(context, thresholds) }
     val immobilityDetector = remember { ImmobilityDetector(context, thresholds) }
@@ -77,8 +78,9 @@ fun SimpleMainScreen() {
                     preAlarmType = PreAlarmType.NONE
                     // Send real alarm
                     try {
+                        val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
                         withContext(Dispatchers.IO) {
-                            supabase.sendAlarm(operatorId, companyId, "FALL", null, null)
+                            supabase.sendAlarm(operatorId, companyId, "FALL", gps?.first, gps?.second)
                         }
                         appState = ScreenState.SOS_SENT
                         sosMessage = "Allarme caduta inviato!"
@@ -102,8 +104,9 @@ fun SimpleMainScreen() {
                 is ImmobilityDetector.Event.Alarm -> {
                     preAlarmType = PreAlarmType.NONE
                     try {
+                        val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
                         withContext(Dispatchers.IO) {
-                            supabase.sendAlarm(operatorId, companyId, "IMMOBILITY", null, null)
+                            supabase.sendAlarm(operatorId, companyId, "IMMOBILITY", gps?.first, gps?.second)
                         }
                         appState = ScreenState.SOS_SENT
                         sosMessage = "Allarme immobilità inviato!"
@@ -127,18 +130,19 @@ fun SimpleMainScreen() {
         }
     }
 
-    // Cleanup detectors on dispose
+    // Cleanup on dispose
     DisposableEffect(Unit) {
         onDispose {
             fallDetector.destroy()
             immobilityDetector.destroy()
+            heartbeat.destroy()
         }
     }
 
-    // Service NOT started automatically — only when user presses "Attiva Protezione"
-    // HeartbeatWorker scheduled in standby mode (no foreground service needed for WorkManager)
+    // Heartbeat in standby mode (low frequency, no foreground service)
     LaunchedEffect(Unit) {
-        HeartbeatWorker.scheduleStandby(context)
+        heartbeat.startStandby()
+        HeartbeatManager.scheduleWorkManagerFallback(context, "standby")
     }
 
     val bgColor by animateColorAsState(
@@ -162,7 +166,8 @@ fun SimpleMainScreen() {
                         startSession(scope, context, supabase, operatorId, companyId, defaultPreset, type, hours) {
                             appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis()
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
-                            HeartbeatWorker.scheduleProtected(context)
+                            heartbeat.startProtected()
+                            HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
                             fallDetector.start(); immobilityDetector.start()
                         }
                     }
@@ -171,7 +176,8 @@ fun SimpleMainScreen() {
                         startSession(scope, context, supabase, operatorId, companyId, defaultPreset, type, hours) {
                             appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis()
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
-                            HeartbeatWorker.scheduleProtected(context)
+                            heartbeat.startProtected()
+                            HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
                             fallDetector.start(); immobilityDetector.start()
                         }
                     }
@@ -180,7 +186,8 @@ fun SimpleMainScreen() {
                         startSession(scope, context, supabase, operatorId, companyId, defaultPreset, type, null) {
                             appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis()
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
-                            HeartbeatWorker.scheduleProtected(context)
+                            heartbeat.startProtected()
+                            HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
                             fallDetector.start(); immobilityDetector.start()
                         }
                     }
@@ -344,8 +351,9 @@ fun SimpleMainScreen() {
                                 }
                             }
                             fallDetector.stop(); immobilityDetector.stop()
+                            heartbeat.startStandby()
                             try { SoloSafeService.startStandby(context) } catch (_: Exception) {}
-                            HeartbeatWorker.scheduleStandby(context)
+                            HeartbeatManager.scheduleWorkManagerFallback(context, "standby")
                         },
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth().height(48.dp),
@@ -386,8 +394,9 @@ fun SimpleMainScreen() {
                     sosMessage = null
                     scope.launch {
                         try {
+                            val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
                             withContext(Dispatchers.IO) {
-                                supabase.sendAlarm(operatorId, companyId, "SOS", null, null)
+                                supabase.sendAlarm(operatorId, companyId, "SOS", gps?.first, gps?.second)
                             }
                             appState = ScreenState.SOS_SENT
                             sosMessage = "✓ Allarme inviato!"

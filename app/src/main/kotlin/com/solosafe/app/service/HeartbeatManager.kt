@@ -3,37 +3,91 @@ package com.solosafe.app.service
 import android.content.Context
 import android.os.BatteryManager
 import android.util.Log
-import androidx.hilt.work.HiltWorker
 import androidx.work.*
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.Tasks
 import com.solosafe.app.SoloSafeApp
 import com.solosafe.app.data.remote.SupabaseClient
-import dagger.assisted.Assisted
-import dagger.assisted.AssistedInject
+import kotlinx.coroutines.*
 import java.util.concurrent.TimeUnit
 
-@HiltWorker
-class HeartbeatWorker @AssistedInject constructor(
-    @Assisted context: Context,
-    @Assisted params: WorkerParameters,
+/**
+ * Heartbeat manager — runs inside the Foreground Service coroutine scope.
+ * WorkManager minimum interval is 15min, but we need 5min for PROTECTED.
+ * Solution: coroutine loop with delay.
+ */
+class HeartbeatManager(
+    private val context: Context,
     private val supabaseClient: SupabaseClient,
-) : CoroutineWorker(context, params) {
+) {
+    private var job: Job? = null
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    override suspend fun doWork(): Result {
-        val prefs = applicationContext.getSharedPreferences(SoloSafeApp.PREFS_NAME, Context.MODE_PRIVATE)
-        val operatorId = prefs.getString(SoloSafeApp.KEY_OPERATOR_ID, null)
-        if (operatorId == null) {
-            Log.w("SoloSafe", "HeartbeatWorker: no operator_id, skipping")
-            return Result.success()
+    fun startStandby() {
+        stop()
+        job = scope.launch {
+            Log.d("SoloSafe", "Heartbeat STANDBY: every 30min")
+            while (isActive) {
+                sendHeartbeat("standby")
+                delay(30 * 60 * 1000L) // 30 minutes
+            }
         }
+    }
 
-        val state = inputData.getString("state") ?: "standby"
-        val battery = getBatteryLevel()
-        val location = getLastLocation()
+    fun startProtected() {
+        stop()
+        job = scope.launch {
+            Log.d("SoloSafe", "Heartbeat PROTECTED: every 5min")
+            // Send immediately
+            sendHeartbeat("protected")
+            while (isActive) {
+                delay(5 * 60 * 1000L) // 5 minutes
+                sendHeartbeat("protected")
+            }
+        }
+    }
 
+    fun stop() {
+        job?.cancel()
+        job = null
+    }
+
+    fun destroy() {
+        stop()
+        scope.cancel()
+    }
+
+    /** Send one heartbeat now (can be called from anywhere) */
+    suspend fun sendOnce(state: String) {
+        sendHeartbeat(state)
+    }
+
+    /** Get current GPS location (for use by alarms too) */
+    @Suppress("MissingPermission")
+    fun getLastLocation(): Pair<Double, Double>? {
         return try {
+            val client = LocationServices.getFusedLocationProviderClient(context)
+            val task = client.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+            val location = Tasks.await(task, 10, TimeUnit.SECONDS)
+            location?.let {
+                Log.d("SoloSafe", "GPS: ${it.latitude}, ${it.longitude} (accuracy: ${it.accuracy}m)")
+                Pair(it.latitude, it.longitude)
+            }
+        } catch (e: Exception) {
+            Log.w("SoloSafe", "GPS unavailable: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun sendHeartbeat(state: String) {
+        val prefs = context.getSharedPreferences(SoloSafeApp.PREFS_NAME, Context.MODE_PRIVATE)
+        val operatorId = prefs.getString(SoloSafeApp.KEY_OPERATOR_ID, null) ?: return
+
+        val battery = getBatteryLevel()
+        val location = withContext(Dispatchers.IO) { getLastLocation() }
+
+        try {
             supabaseClient.sendHeartbeat(
                 operatorId = operatorId,
                 state = state,
@@ -42,59 +96,56 @@ class HeartbeatWorker @AssistedInject constructor(
                 lat = location?.first,
                 lng = location?.second,
             )
-            Log.d("SoloSafe", "Heartbeat sent: state=$state, battery=$battery, gps=${location != null}")
-            Result.success()
+            Log.d("SoloSafe", "Heartbeat OK: state=$state, battery=$battery%, gps=${location != null}")
         } catch (e: Exception) {
             Log.e("SoloSafe", "Heartbeat failed: ${e.message}")
-            Result.retry()
         }
     }
 
     private fun getBatteryLevel(): Int {
-        val bm = applicationContext.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
         return bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
     }
 
-    @Suppress("MissingPermission")
-    private fun getLastLocation(): Pair<Double, Double>? {
-        return try {
-            val client = LocationServices.getFusedLocationProviderClient(applicationContext)
-            val task = client.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
-            val location = Tasks.await(task, 10, TimeUnit.SECONDS)
-            location?.let { Pair(it.latitude, it.longitude) }
-        } catch (e: Exception) {
-            Log.w("SoloSafe", "Location unavailable: ${e.message}")
-            null
+    companion object {
+        // Keep WorkManager as fallback for when app is killed
+        fun scheduleWorkManagerFallback(context: Context, state: String) {
+            val interval = if (state == "protected") 15L else 30L
+            val request = PeriodicWorkRequestBuilder<HeartbeatFallbackWorker>(interval, TimeUnit.MINUTES)
+                .setInputData(workDataOf("state" to state))
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .build()
+            WorkManager.getInstance(context)
+                .enqueueUniquePeriodicWork("heartbeat_fallback", ExistingPeriodicWorkPolicy.UPDATE, request)
+        }
+
+        fun cancelWorkManager(context: Context) {
+            WorkManager.getInstance(context).cancelUniqueWork("heartbeat_fallback")
         }
     }
+}
 
-    companion object {
-        private const val WORK_STANDBY = "heartbeat_standby"
-        private const val WORK_PROTECTED = "heartbeat_protected"
+/** Fallback WorkManager worker — runs only if Foreground Service is killed */
+class HeartbeatFallbackWorker(
+    context: Context,
+    params: WorkerParameters,
+) : CoroutineWorker(context, params) {
 
-        fun scheduleStandby(context: Context) {
-            val request = PeriodicWorkRequestBuilder<HeartbeatWorker>(30, TimeUnit.MINUTES)
-                .setInputData(workDataOf("state" to "standby"))
-                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                .build()
-            WorkManager.getInstance(context)
-                .enqueueUniquePeriodicWork(WORK_STANDBY, ExistingPeriodicWorkPolicy.UPDATE, request)
-            WorkManager.getInstance(context).cancelUniqueWork(WORK_PROTECTED)
-        }
+    override suspend fun doWork(): Result {
+        val prefs = applicationContext.getSharedPreferences(SoloSafeApp.PREFS_NAME, Context.MODE_PRIVATE)
+        val operatorId = prefs.getString(SoloSafeApp.KEY_OPERATOR_ID, null) ?: return Result.success()
+        val state = inputData.getString("state") ?: "standby"
 
-        fun scheduleProtected(context: Context) {
-            val request = PeriodicWorkRequestBuilder<HeartbeatWorker>(5, TimeUnit.MINUTES)
-                .setInputData(workDataOf("state" to "protected"))
-                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                .build()
-            WorkManager.getInstance(context)
-                .enqueueUniquePeriodicWork(WORK_PROTECTED, ExistingPeriodicWorkPolicy.UPDATE, request)
-            WorkManager.getInstance(context).cancelUniqueWork(WORK_STANDBY)
-        }
-
-        fun cancelAll(context: Context) {
-            WorkManager.getInstance(context).cancelUniqueWork(WORK_STANDBY)
-            WorkManager.getInstance(context).cancelUniqueWork(WORK_PROTECTED)
+        return try {
+            val supabase = SupabaseClient()
+            val battery = (applicationContext.getSystemService(Context.BATTERY_SERVICE) as BatteryManager)
+                .getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+            supabase.sendHeartbeat(operatorId, state, battery, null, null, null)
+            Log.d("SoloSafe", "Heartbeat fallback OK: state=$state")
+            Result.success()
+        } catch (e: Exception) {
+            Log.e("SoloSafe", "Heartbeat fallback failed: ${e.message}")
+            Result.retry()
         }
     }
 }
