@@ -6,6 +6,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.util.Log
+import com.solosafe.app.SoloSafeApp
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -34,11 +35,15 @@ class MaloreDetector(
     private val _events = MutableSharedFlow<Event>(extraBufferCapacity = 5)
     val events: SharedFlow<Event> = _events
 
+    private val prefs by lazy { context.getSharedPreferences(SoloSafeApp.PREFS_NAME, Context.MODE_PRIVATE) }
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var isRunning = false
+
+    private val isEnabled: Boolean get() = prefs.getBoolean("malore_enabled", true)
+    private val deviationAngleDeg: Float get() = prefs.getFloat("malore_angle", 45f)
 
     // Calibration
     private var isCalibrating = true
@@ -54,14 +59,14 @@ class MaloreDetector(
     private var preAlarmActive = false
     private var monitorJob: Job? = null
 
-    // Thresholds
-    private val deviationAngleDeg = 45f
-    private val immobilityThreshold = 0.4f // G variance threshold
-    private val deviationHoldSec = 10 // seconds deviated + immobile before pre-alarm
-    private val alarmTimeoutSec = 30 // seconds after pre-alarm without response
+    // Thresholds (deviationAngleDeg read from SharedPreferences above)
+    private val immobilityThreshold = 0.4f
+    private val deviationHoldSec = 10
+    private val alarmTimeoutSec = 30
 
     fun start() {
         if (isRunning) return
+        if (!isEnabled) { Log.d("SoloSafe", "MaloreDetector: disabled"); return }
         accelerometer?.let {
             isCalibrating = true
             calibrationSamples.clear()

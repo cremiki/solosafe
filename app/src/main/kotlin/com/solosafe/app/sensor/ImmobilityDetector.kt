@@ -8,6 +8,7 @@ import android.hardware.SensorManager
 import android.os.Vibrator
 import android.os.VibrationEffect
 import android.util.Log
+import com.solosafe.app.SoloSafeApp
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -33,6 +34,7 @@ class ImmobilityDetector(
     private val _events = MutableSharedFlow<Event>(extraBufferCapacity = 5)
     val events: SharedFlow<Event> = _events
 
+    private val prefs by lazy { context.getSharedPreferences(SoloSafeApp.PREFS_NAME, Context.MODE_PRIVATE) }
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
     private val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
@@ -41,10 +43,13 @@ class ImmobilityDetector(
     private var alarmJob: Job? = null
     private var isRunning = false
 
-    // Movement tracking
     private var lastG = 0f
     private var lastMovementTime = System.currentTimeMillis()
     private var inPreAlarm = false
+
+    private val isEnabled: Boolean get() = prefs.getBoolean("immobility_enabled", true)
+    private val preAlarmSec: Int get() = prefs.getFloat("immobility_seconds", thresholds.immobilityPreAlarmSec.toFloat()).toInt()
+    private val alarmSec: Int get() = preAlarmSec + 30 // alarm 30s after pre-alarm
 
     // Movement threshold — must be high enough to ignore sensor noise on a still table
     // 0.15 is too sensitive, 0.4 filters out noise while detecting real movement
@@ -52,12 +57,13 @@ class ImmobilityDetector(
 
     fun start() {
         if (isRunning) return
+        if (!isEnabled) { Log.d("SoloSafe", "ImmobilityDetector: disabled"); return }
         accelerometer?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
             lastMovementTime = System.currentTimeMillis()
             isRunning = true
             startMonitoring()
-            Log.d("SoloSafe", "ImmobilityDetector started: preAlarm=${thresholds.immobilityPreAlarmSec}s, alarm=${thresholds.immobilityAlarmSec}s")
+            Log.d("SoloSafe", "ImmobilityDetector started: preAlarm=${preAlarmSec}s")
         }
     }
 
@@ -111,7 +117,7 @@ class ImmobilityDetector(
                 val immobileFor = (System.currentTimeMillis() - lastMovementTime) / 1000
                 Log.d("SoloSafe", "Immobility check: ${immobileFor}s / ${thresholds.immobilityPreAlarmSec}s (preAlarm=$inPreAlarm)")
 
-                if (!inPreAlarm && immobileFor >= thresholds.immobilityPreAlarmSec) {
+                if (!inPreAlarm && immobileFor >= preAlarmSec) {
                     // Pre-alarm: vibrate
                     inPreAlarm = true
                     Log.d("SoloSafe", "Immobility pre-alarm: ${immobileFor}s without movement")
@@ -119,7 +125,7 @@ class ImmobilityDetector(
                     _events.emit(Event.PreAlarm)
                 }
 
-                if (inPreAlarm && immobileFor >= thresholds.immobilityAlarmSec) {
+                if (inPreAlarm && immobileFor >= alarmSec) {
                     // Full alarm
                     inPreAlarm = false
                     Log.d("SoloSafe", "Immobility alarm: ${immobileFor}s without movement")
