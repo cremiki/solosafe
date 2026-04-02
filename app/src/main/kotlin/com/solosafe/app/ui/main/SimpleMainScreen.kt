@@ -244,44 +244,58 @@ fun SimpleMainScreen() {
         )
     }
 
-    // Pre-alarm dialog — "Stai bene?"
+    // Pre-alarm FULLSCREEN
     if (preAlarmType != PreAlarmType.NONE) {
-        AlertDialog(
-            onDismissRequest = { /* can't dismiss by tapping outside */ },
-            containerColor = Color(0xFF1A0000),
-            title = {
-                Text(
-                    when (preAlarmType) {
-                        PreAlarmType.MAN_DOWN -> "Caduta rilevata!"
-                        PreAlarmType.MALORE -> "Posizione anomala rilevata!"
-                        PreAlarmType.IMMOBILITY -> "Sei immobile da troppo tempo!"
-                        else -> ""
-                    },
-                    color = Alarm,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
+        // Flashing red background
+        val flashAlpha by animateColorAsState(
+            targetValue = if (preAlarmCountdown % 2 == 0) Color(0xFFCC0000) else Color(0xFF880000),
+            label = "flash"
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(flashAlpha)
+                .systemBarsPadding(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxSize().padding(32.dp),
+            ) {
+                Spacer(modifier = Modifier.weight(0.3f))
+
+                // Warning icon
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(120.dp),
                 )
-            },
-            text = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                    Text("Stai bene?", color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        "Allarme automatico tra ${preAlarmCountdown}s",
-                        color = Alarm,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    LinearProgressIndicator(
-                        progress = { preAlarmCountdown / 30f },
-                        modifier = Modifier.fillMaxWidth().height(6.dp),
-                        color = Alarm,
-                        trackColor = Color(0xFF2A0000),
-                    )
-                }
-            },
-            confirmButton = {
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Countdown
+                Text(
+                    "$preAlarmCountdown",
+                    color = Color.White,
+                    fontSize = 80.sp,
+                    fontWeight = FontWeight.Black,
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Progress arc
+                LinearProgressIndicator(
+                    progress = { preAlarmCountdown / 30f },
+                    modifier = Modifier.fillMaxWidth().height(8.dp),
+                    color = Color.White,
+                    trackColor = Color(0x33FFFFFF),
+                )
+
+                Spacer(modifier = Modifier.weight(0.3f))
+
+                // BIG green button — takes half the screen
                 Button(
                     onClick = {
                         fallDetector.cancelAlarm()
@@ -291,13 +305,19 @@ fun SimpleMainScreen() {
                         alarmSound.stop()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Protected),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier.fillMaxWidth().weight(0.4f),
                 ) {
-                    Text("SÌ, STO BENE", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White)
+                    Text(
+                        "STO BENE",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 36.sp,
+                        color = Color.White,
+                    )
                 }
-            },
-        )
+            }
+        }
+        return // Don't render anything else during pre-alarm
     }
 
     Box(
