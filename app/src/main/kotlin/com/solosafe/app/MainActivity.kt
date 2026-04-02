@@ -13,6 +13,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.solosafe.app.ui.main.SimpleMainScreen
 import com.solosafe.app.ui.qr.QrScanScreen
+import com.solosafe.app.ui.settings.SettingsScreen
 import com.solosafe.app.ui.welcome.WelcomeScreen
 import com.solosafe.app.ui.theme.SoloSafeTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -50,7 +51,13 @@ class MainActivity : ComponentActivity() {
 
                     composable("main") {
                         Log.d("SoloSafe", "Rendering SimpleMainScreen")
-                        SimpleMainScreen()
+                        SimpleMainScreen(
+                            onOpenSettings = { navController.navigate("settings") },
+                        )
+                    }
+
+                    composable("settings") {
+                        SettingsScreen(onBack = { navController.popBackStack() })
                     }
                 }
             }

@@ -40,7 +40,7 @@ private enum class ScreenState { STANDBY, PROTECTED, SOS_SENT }
 private enum class PreAlarmType { NONE, MAN_DOWN, MALORE, IMMOBILITY }
 
 @Composable
-fun SimpleMainScreen() {
+fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = remember {
@@ -398,7 +398,13 @@ fun SimpleMainScreen() {
                         fontWeight = FontWeight.Bold, fontSize = 14.sp,
                     )
                 }
-                Text(operatorName, color = TextSecondary, fontSize = 13.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(operatorName, color = TextSecondary, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(onClick = onOpenSettings, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Settings, contentDescription = "Impostazioni", tint = TextSecondary, modifier = Modifier.size(20.dp))
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.weight(1f))
