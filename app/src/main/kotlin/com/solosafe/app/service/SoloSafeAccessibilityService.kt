@@ -2,6 +2,7 @@ package com.solosafe.app.service
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
+import android.os.Build
 import android.telephony.TelephonyManager
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
@@ -9,9 +10,10 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.solosafe.app.SoloSafeApp
 
 /**
- * Auto-answers incoming calls from authorized numbers via Accessibility Service.
- * No need to be default phone app — works by finding and clicking the "Answer" button.
- * Active ONLY when app is in PROTECTED state and caller is authorized.
+ * Auto-answers incoming calls when in PROTECTED state.
+ *
+ * Strategy 1 (Android 8+): GLOBAL_ACTION_ANSWER_CALL — official API, most reliable
+ * Strategy 2 (fallback): Find and click the "Answer" button in the call UI
  */
 class SoloSafeAccessibilityService : AccessibilityService() {
 
@@ -19,63 +21,101 @@ class SoloSafeAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
-        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
 
-        // Only act when phone is ringing
-        val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-        if (tm?.callState != TelephonyManager.CALL_STATE_RINGING) return
+        // Log all events for debugging
+        val eventType = AccessibilityEvent.eventTypeToString(event.eventType)
+        val pkg = event.packageName?.toString() ?: "null"
 
-        // Debounce — don't answer twice within 5s
+        // Only care about phone/dialer apps
+        val isPhoneApp = pkg.contains("dialer") || pkg.contains("phone") ||
+            pkg.contains("incallui") || pkg.contains("telecom")
+        if (!isPhoneApp) return
+
+        Log.d("SoloSafe", "AccessibilityEvent: type=$eventType pkg=$pkg")
+
+        // Debounce
         val now = System.currentTimeMillis()
         if (now - lastAnsweredTime < 5000) return
 
+        // Check if phone is ringing
+        val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+        @Suppress("DEPRECATION")
+        val isRinging = tm?.callState == TelephonyManager.CALL_STATE_RINGING
+        if (!isRinging) {
+            Log.d("SoloSafe", "Phone not ringing, skip")
+            return
+        }
+
         // Check if in PROTECTED state
         val prefs = getSharedPreferences(SoloSafeApp.PREFS_NAME, Context.MODE_PRIVATE)
-        val isProtected = prefs.getString("current_state", "standby") == "protected"
-        if (!isProtected) return
-
-        // Try to find and click the answer button
-        val rootNode = rootInActiveWindow ?: return
-        if (findAndClickAnswer(rootNode)) {
-            lastAnsweredTime = now
-            Log.d("SoloSafe", "Auto-answered call via Accessibility Service")
+        val currentState = prefs.getString("current_state", "standby")
+        if (currentState != "protected") {
+            Log.d("SoloSafe", "Not PROTECTED (state=$currentState), skip auto-answer")
+            return
         }
-        rootNode.recycle()
+
+        Log.d("SoloSafe", "Phone ringing + PROTECTED → attempting auto-answer...")
+
+        // Strategy 1: GLOBAL_ACTION_ANSWER_CALL (Android 8+, most reliable)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val success = performGlobalAction(GLOBAL_ACTION_ANSWER_CALL)
+            if (success) {
+                lastAnsweredTime = now
+                Log.d("SoloSafe", "AUTO-ANSWERED via GLOBAL_ACTION_ANSWER_CALL")
+                return
+            }
+            Log.w("SoloSafe", "GLOBAL_ACTION_ANSWER_CALL failed, trying button click...")
+        }
+
+        // Strategy 2: Find and click answer button
+        val rootNode = rootInActiveWindow
+        if (rootNode != null) {
+            dumpNodeTree(rootNode, 0) // Debug: log the entire UI tree
+            if (findAndClickAnswer(rootNode)) {
+                lastAnsweredTime = now
+                Log.d("SoloSafe", "AUTO-ANSWERED via button click")
+            }
+            rootNode.recycle()
+        } else {
+            Log.w("SoloSafe", "rootInActiveWindow is null")
+        }
     }
 
     private fun findAndClickAnswer(node: AccessibilityNodeInfo): Boolean {
-        // Common answer button labels across Android phones
         val answerLabels = listOf(
-            "rispondi", "answer", "accept", "accetta",
-            "risposta", "slide to answer", "scorri per rispondere",
+            "rispondi", "answer", "accept", "accetta", "risposta",
+            "slide to answer", "scorri per rispondere", "swipe to answer",
+            // Blackview / stock Android
+            "answer call", "rispondere alla chiamata",
         )
 
-        // Check this node
         val text = node.text?.toString()?.lowercase() ?: ""
         val desc = node.contentDescription?.toString()?.lowercase() ?: ""
-        val className = node.className?.toString() ?: ""
 
         for (label in answerLabels) {
             if (text.contains(label) || desc.contains(label)) {
+                // Try click on node
                 if (node.isClickable) {
                     node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    Log.d("SoloSafe", "Clicked answer button: text='$text' desc='$desc'")
+                    Log.d("SoloSafe", "Clicked: text='$text' desc='$desc'")
                     return true
                 }
-                // Try clicking parent if node isn't clickable
-                val parent = node.parent
-                if (parent?.isClickable == true) {
-                    parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                // Try parent
+                var parent = node.parent
+                while (parent != null) {
+                    if (parent.isClickable) {
+                        parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                        Log.d("SoloSafe", "Clicked parent of: text='$text'")
+                        parent.recycle()
+                        return true
+                    }
+                    val next = parent.parent
                     parent.recycle()
-                    Log.d("SoloSafe", "Clicked parent of answer button: text='$text'")
-                    return true
+                    parent = next
                 }
-                parent?.recycle()
             }
         }
 
-        // Recurse children
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             if (findAndClickAnswer(child)) {
@@ -84,8 +124,25 @@ class SoloSafeAccessibilityService : AccessibilityService() {
             }
             child.recycle()
         }
-
         return false
+    }
+
+    /** Debug: dump the UI node tree to logcat */
+    private fun dumpNodeTree(node: AccessibilityNodeInfo, depth: Int) {
+        if (depth > 5) return // limit depth
+        val indent = "  ".repeat(depth)
+        val text = node.text?.toString() ?: ""
+        val desc = node.contentDescription?.toString() ?: ""
+        val cls = node.className?.toString()?.substringAfterLast(".") ?: ""
+        val clickable = if (node.isClickable) "[CLICK]" else ""
+        if (text.isNotEmpty() || desc.isNotEmpty() || node.isClickable) {
+            Log.d("SoloSafe", "${indent}$cls $clickable text='$text' desc='$desc'")
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            dumpNodeTree(child, depth + 1)
+            child.recycle()
+        }
     }
 
     override fun onInterrupt() {
@@ -94,6 +151,6 @@ class SoloSafeAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        Log.d("SoloSafe", "SoloSafe AccessibilityService connected")
+        Log.d("SoloSafe", "SoloSafe AccessibilityService CONNECTED and active")
     }
 }
