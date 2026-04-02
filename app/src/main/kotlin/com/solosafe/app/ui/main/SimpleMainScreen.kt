@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.solosafe.app.SoloSafeApp
 import com.solosafe.app.data.remote.SupabaseClient
+import com.solosafe.app.sensor.AlarmSoundManager
 import com.solosafe.app.sensor.FallDetector
 import com.solosafe.app.sensor.ImmobilityDetector
 import com.solosafe.app.sensor.PresetThresholds
@@ -62,6 +63,7 @@ fun SimpleMainScreen() {
 
     val supabase = remember { SupabaseClient() }
     val heartbeat = remember { HeartbeatManager(context, supabase) }
+    val alarmSound = remember { AlarmSoundManager(context) }
     val thresholds = remember { PresetThresholds.forPreset(defaultPreset) }
     val fallDetector = remember { FallDetector(context, thresholds) }
     val immobilityDetector = remember { ImmobilityDetector(context, thresholds) }
@@ -73,10 +75,11 @@ fun SimpleMainScreen() {
                 is FallDetector.Event.PreAlarm -> {
                     preAlarmType = PreAlarmType.FALL
                     preAlarmCountdown = 30
+                    alarmSound.startPreAlarm()
                 }
                 is FallDetector.Event.Alarm -> {
                     preAlarmType = PreAlarmType.NONE
-                    // Send real alarm
+                    alarmSound.startFullAlarm()
                     try {
                         val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
                         withContext(Dispatchers.IO) {
@@ -88,6 +91,7 @@ fun SimpleMainScreen() {
                 }
                 is FallDetector.Event.Cancelled -> {
                     preAlarmType = PreAlarmType.NONE
+                    alarmSound.stop()
                 }
             }
         }
@@ -100,9 +104,11 @@ fun SimpleMainScreen() {
                 is ImmobilityDetector.Event.PreAlarm -> {
                     preAlarmType = PreAlarmType.IMMOBILITY
                     preAlarmCountdown = 30
+                    alarmSound.startPreAlarm()
                 }
                 is ImmobilityDetector.Event.Alarm -> {
                     preAlarmType = PreAlarmType.NONE
+                    alarmSound.startFullAlarm()
                     try {
                         val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
                         withContext(Dispatchers.IO) {
@@ -114,6 +120,7 @@ fun SimpleMainScreen() {
                 }
                 is ImmobilityDetector.Event.Cancelled -> {
                     preAlarmType = PreAlarmType.NONE
+                    alarmSound.stop()
                 }
             }
         }
@@ -136,6 +143,7 @@ fun SimpleMainScreen() {
             fallDetector.destroy()
             immobilityDetector.destroy()
             heartbeat.destroy()
+            alarmSound.destroy()
         }
     }
 
@@ -240,6 +248,7 @@ fun SimpleMainScreen() {
                         fallDetector.cancelAlarm()
                         immobilityDetector.cancelAlarm()
                         preAlarmType = PreAlarmType.NONE
+                        alarmSound.stop()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Protected),
                     shape = RoundedCornerShape(12.dp),
@@ -371,6 +380,7 @@ fun SimpleMainScreen() {
                     Text("Allarme inviato ai contatti", color = TextSecondary, fontSize = 14.sp, textAlign = TextAlign.Center)
                     Spacer(modifier = Modifier.height(24.dp))
                     TextButton(onClick = {
+                        alarmSound.stop()
                         appState = if (sessionStart != null) ScreenState.PROTECTED else ScreenState.STANDBY
                     }) {
                         Text("Torna alla schermata", color = TextSecondary)
@@ -392,6 +402,7 @@ fun SimpleMainScreen() {
                     if (isLoading) return@Button
                     isLoading = true
                     sosMessage = null
+                    alarmSound.startFullAlarm()
                     scope.launch {
                         try {
                             val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
