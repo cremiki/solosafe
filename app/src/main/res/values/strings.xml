@@ -24,4 +24,5 @@
     <string name="battery">Batteria</string>
     <string name="connection">Connessione</string>
     <string name="last_heartbeat">Ultimo heartbeat</string>
+    <string name="accessibility_service_description">Risponde automaticamente alle chiamate da numeri autorizzati quando la protezione è attiva.</string>
 </resources>

@@ -79,14 +79,18 @@
             </intent-filter>
         </receiver>
 
-        <!-- Auto-answer receiver for authorized numbers -->
-        <receiver
-            android:name=".service.AutoAnswerReceiver"
+        <!-- Accessibility Service for auto-answering calls -->
+        <service
+            android:name=".service.SoloSafeAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="true">
             <intent-filter>
-                <action android:name="android.intent.action.PHONE_STATE" />
+                <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
-        </receiver>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
 
         <!-- WorkManager init -->
         <provider
