@@ -16,6 +16,7 @@ import com.solosafe.app.ui.qr.QrScanScreen
 import com.solosafe.app.ui.settings.SettingsScreen
 import com.solosafe.app.ui.welcome.WelcomeScreen
 import com.solosafe.app.ui.permissions.PermissionScreen
+import com.solosafe.app.ui.registration.FreeRegistrationScreen
 import com.solosafe.app.ui.theme.SoloSafeTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -28,11 +29,13 @@ class MainActivity : ComponentActivity() {
 
         val prefs = getSharedPreferences(SoloSafeApp.PREFS_NAME, Context.MODE_PRIVATE)
         val operatorId = prefs.getString(SoloSafeApp.KEY_OPERATOR_ID, null)
+        val freeUser = prefs.getBoolean("free_user", false)
         val permsDone = prefs.getBoolean("permissions_done", false)
         val startDest = when {
-            operatorId == null -> "welcome"
-            !permsDone -> "permissions"
-            else -> "main"
+            operatorId != null && permsDone -> "main"
+            freeUser && permsDone -> "main"
+            operatorId != null || freeUser -> "permissions"
+            else -> "registration"
         }
         Log.d("SoloSafe", "onCreate: operator_id=${operatorId ?: "NULL"}, startDest=$startDest")
 
@@ -41,6 +44,12 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
 
                 NavHost(navController = navController, startDestination = startDest) {
+
+                    composable("registration") {
+                        FreeRegistrationScreen(
+                            onGoToQr = { navController.navigate("qr") },
+                        )
+                    }
 
                     composable("welcome") {
                         WelcomeScreen(
