@@ -30,6 +30,9 @@ import com.solosafe.app.service.SoloSafeService
 import com.solosafe.app.service.HeartbeatManager
 import com.solosafe.app.service.SessionExpiryManager
 import com.solosafe.app.service.SmsAlertManager
+import com.solosafe.app.service.OfflineSyncManager
+import androidx.room.Room
+import com.solosafe.app.data.local.AppDatabase
 import com.solosafe.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -72,6 +75,8 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
     var newNumber by remember { mutableStateOf("") }
 
     val supabase = remember { SupabaseClient() }
+    val roomDb = remember { Room.databaseBuilder(context, AppDatabase::class.java, "solosafe.db").fallbackToDestructiveMigration().build() }
+    val offlineSync = remember { OfflineSyncManager(context, supabase, roomDb) }
     val heartbeat = remember { HeartbeatManager(context, supabase) }
     val alarmSound = remember { AlarmSoundManager(context) }
     val thresholds = remember { PresetThresholds.forPreset(defaultPreset) }
@@ -228,14 +233,16 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
             immobilityDetector.destroy()
             maloreDetector.destroy()
             sessionExpiry.destroy()
+            offlineSync.destroy()
             heartbeat.destroy()
             alarmSound.destroy()
         }
     }
 
-    // Heartbeat in standby mode
+    // Heartbeat + offline sync
     LaunchedEffect(Unit) {
         heartbeat.startStandby()
+        offlineSync.startPeriodicSync()
         HeartbeatManager.scheduleWorkManagerFallback(context, "standby")
 
         // Load authorized numbers
