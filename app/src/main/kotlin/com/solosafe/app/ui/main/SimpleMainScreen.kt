@@ -219,13 +219,19 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
         }
     }
 
-    // Pre-alarm countdown timer
+    // Pre-alarm countdown timer — cancels automatically when preAlarmType changes
     LaunchedEffect(preAlarmType) {
         if (preAlarmType != PreAlarmType.NONE) {
-            preAlarmCountdown = 30
-            while (preAlarmCountdown > 0) {
-                delay(1000)
-                preAlarmCountdown--
+            try {
+                preAlarmCountdown = 30
+                while (preAlarmCountdown > 0) {
+                    delay(1000)
+                    preAlarmCountdown--
+                }
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                // Normal cancellation when user presses "STO BENE"
+            } catch (e: Exception) {
+                Log.e("SoloSafe", "Countdown error: ${e.message}")
             }
         }
     }
@@ -374,7 +380,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
     }
 
     // Pre-alarm FULLSCREEN
-    if (preAlarmType != PreAlarmType.NONE) {
+    if (preAlarmType != PreAlarmType.NONE && preAlarmCountdown >= 0) {
         // Flashing red background
         val flashAlpha by animateColorAsState(
             targetValue = if (preAlarmCountdown % 2 == 0) Color(0xFFCC0000) else Color(0xFF880000),
@@ -432,7 +438,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
 
                 // Progress arc
                 LinearProgressIndicator(
-                    progress = { preAlarmCountdown / 30f },
+                    progress = { (preAlarmCountdown.coerceIn(0, 30)) / 30f },
                     modifier = Modifier.fillMaxWidth().height(8.dp),
                     color = Color.White,
                     trackColor = Color(0x33FFFFFF),
