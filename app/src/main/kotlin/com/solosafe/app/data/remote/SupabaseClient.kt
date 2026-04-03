@@ -77,11 +77,20 @@ class SupabaseClient @Inject constructor() {
             put("status", "completed")
             put("actual_end", java.time.Instant.now().toString())
         }) {
-            filter {
-                eq("id", sessionId)
-            }
+            filter { eq("id", sessionId) }
         }
         Log.d("SoloSafe", "Work session ended: $sessionId")
+    }
+
+    /** Close ALL active sessions for an operator (cleanup fallback) */
+    suspend fun endAllSessions(operatorId: String) = withContext(Dispatchers.IO) {
+        client.from("work_sessions").update(buildJsonObject {
+            put("status", "completed")
+            put("actual_end", java.time.Instant.now().toString())
+        }) {
+            filter { eq("operator_id", operatorId); eq("status", "active") }
+        }
+        Log.d("SoloSafe", "All active sessions closed for operator: $operatorId")
     }
 
     suspend fun sendAlarm(

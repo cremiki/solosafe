@@ -587,8 +587,12 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                             prefs.edit().putString("current_state", "standby").commit()
                             scope.launch {
                                 try {
-                                    currentSessionId?.let { supabase.endSession(it) }
-                                    supabase.sendHeartbeat(operatorId, "standby", 100, null, null, null)
+                                    if (currentSessionId != null) {
+                                        supabase.endSession(currentSessionId!!)
+                                    } else {
+                                        supabase.endAllSessions(operatorId)
+                                    }
+                                    supabase.sendHeartbeat(operatorId, "standby", 0, null, null, null)
                                     Log.d("SoloSafe", "Session ended + status set to standby")
                                 } catch (e: Exception) {
                                     Log.e("SoloSafe", "End session error: ${e.message}")
