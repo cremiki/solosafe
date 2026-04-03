@@ -63,6 +63,8 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
     var sessionType by remember { mutableStateOf("") }
     var currentSessionId by remember { mutableStateOf<String?>(null) }
     var showExpiryDialog by remember { mutableStateOf(false) }
+    var showExpiryWarning by remember { mutableStateOf(false) }
+    var expiryWarningMinutes by remember { mutableIntStateOf(0) }
     var expiryMessage by remember { mutableStateOf<String?>(null) }
     var slotError by remember { mutableStateOf(false) }
     var showSessionDialog by remember { mutableStateOf(false) }
@@ -185,11 +187,13 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                     expiryMessage = "Sessione in scadenza tra 15 minuti"
                 }
                 is SessionExpiryManager.Event.Warning10 -> {
-                    expiryMessage = "⚠ Mancano 10 minuti alla scadenza"
+                    expiryWarningMinutes = 10
+                    showExpiryWarning = true
                     alarmSound.startPreAlarm()
                 }
                 is SessionExpiryManager.Event.Warning5 -> {
-                    expiryMessage = "⚠ Mancano 5 minuti alla scadenza!"
+                    expiryWarningMinutes = 5
+                    showExpiryWarning = true
                     alarmSound.startPreAlarm()
                 }
                 is SessionExpiryManager.Event.Expired -> {
@@ -367,6 +371,29 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
             dismissButton = {
                 TextButton(onClick = { showSessionDialog = false }) {
                     Text("Annulla", color = TextSecondary)
+                }
+            },
+        )
+    }
+
+    // Session expiry warning (T-10 / T-5) — accept or extend
+    if (showExpiryWarning) {
+        AlertDialog(
+            onDismissRequest = {},
+            containerColor = Surface,
+            title = { Text("Turno in scadenza", color = Warning, fontWeight = FontWeight.Bold) },
+            text = { Text("Mancano $expiryWarningMinutes minuti alla fine del turno.", color = TextPrimary, fontSize = 15.sp) },
+            confirmButton = {
+                Button(
+                    onClick = { showExpiryWarning = false; alarmSound.stop(); expiryMessage = "Mancano $expiryWarningMinutes min" },
+                    colors = ButtonDefaults.buttonColors(containerColor = Protected),
+                    shape = RoundedCornerShape(10.dp),
+                ) { Text("OK, continuo", fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { showExpiryWarning = false; alarmSound.stop(); sessionExpiry.extend(1); expiryMessage = "Esteso +1h" }) { Text("+1 ora", color = TextSecondary) }
+                    TextButton(onClick = { showExpiryWarning = false; alarmSound.stop(); sessionExpiry.extend(2); expiryMessage = "Esteso +2h" }) { Text("+2 ore", color = TextSecondary) }
                 }
             },
         )
