@@ -28,6 +28,7 @@ import com.solosafe.app.sensor.MaloreDetector
 import com.solosafe.app.sensor.PresetThresholds
 import com.solosafe.app.service.SoloSafeService
 import com.solosafe.app.service.HeartbeatManager
+import com.solosafe.app.service.SessionExpiryManager
 import com.solosafe.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -57,6 +58,8 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
     var sessionDurationHours by remember { mutableIntStateOf(0) }
     var sessionType by remember { mutableStateOf("") }
     var currentSessionId by remember { mutableStateOf<String?>(null) }
+    var showExpiryDialog by remember { mutableStateOf(false) }
+    var expiryMessage by remember { mutableStateOf<String?>(null) }
     var showSessionDialog by remember { mutableStateOf(false) }
     var sosMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
@@ -70,6 +73,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
     val heartbeat = remember { HeartbeatManager(context, supabase) }
     val alarmSound = remember { AlarmSoundManager(context) }
     val thresholds = remember { PresetThresholds.forPreset(defaultPreset) }
+    val sessionExpiry = remember { SessionExpiryManager() }
     val fallDetector = remember { FallDetector(context, thresholds) }
     val immobilityDetector = remember { ImmobilityDetector(context, thresholds) }
     val maloreDetector = remember { MaloreDetector(context) }
@@ -163,6 +167,43 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
         }
     }
 
+    // Session expiry events
+    LaunchedEffect(Unit) {
+        sessionExpiry.events.collect { event ->
+            when (event) {
+                is SessionExpiryManager.Event.Warning15 -> {
+                    expiryMessage = "Sessione in scadenza tra 15 minuti"
+                }
+                is SessionExpiryManager.Event.Expired -> {
+                    showExpiryDialog = true
+                    expiryMessage = null
+                }
+                is SessionExpiryManager.Event.PreAlarm -> {
+                    showExpiryDialog = false
+                    preAlarmType = PreAlarmType.IMMOBILITY // reuse pre-alarm UI
+                    preAlarmCountdown = 30
+                    alarmSound.startPreAlarm()
+                }
+                is SessionExpiryManager.Event.Alarm -> {
+                    preAlarmType = PreAlarmType.NONE
+                    alarmSound.startFullAlarm()
+                    try {
+                        val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
+                        withContext(Dispatchers.IO) {
+                            supabase.sendAlarm(operatorId, companyId, "SESSION_EXPIRED", gps?.first, gps?.second)
+                        }
+                        appState = ScreenState.SOS_SENT
+                        sosMessage = "Sessione scaduta — allarme inviato!"
+                    } catch (_: Exception) {}
+                }
+                is SessionExpiryManager.Event.Extended -> {
+                    showExpiryDialog = false
+                    expiryMessage = "Sessione estesa"
+                }
+            }
+        }
+    }
+
     // Pre-alarm countdown timer
     LaunchedEffect(preAlarmType) {
         if (preAlarmType != PreAlarmType.NONE) {
@@ -180,6 +221,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
             fallDetector.destroy()
             immobilityDetector.destroy()
             maloreDetector.destroy()
+            sessionExpiry.destroy()
             heartbeat.destroy()
             alarmSound.destroy()
         }
@@ -233,6 +275,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                             heartbeat.startProtected()
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
                             fallDetector.start(); immobilityDetector.start(); maloreDetector.start()
+                            if (hours > 0) sessionExpiry.start(System.currentTimeMillis() + hours * 3600_000L)
                         }
                     }
                     SessionOption("Turno 4 ore", "turno", 4) { type, hours ->
@@ -244,6 +287,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                             heartbeat.startProtected()
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
                             fallDetector.start(); immobilityDetector.start(); maloreDetector.start()
+                            if (hours > 0) sessionExpiry.start(System.currentTimeMillis() + hours * 3600_000L)
                         }
                     }
                     SessionOption("Continua (H24)", "continua", 0) { type, _ ->
@@ -255,6 +299,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                             heartbeat.startProtected()
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
                             fallDetector.start(); immobilityDetector.start(); maloreDetector.start()
+                            if (hours > 0) sessionExpiry.start(System.currentTimeMillis() + hours * 3600_000L)
                         }
                     }
                 }
@@ -263,6 +308,38 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
             dismissButton = {
                 TextButton(onClick = { showSessionDialog = false }) {
                     Text("Annulla", color = TextSecondary)
+                }
+            },
+        )
+    }
+
+    // Session expiry dialog — "Vuoi estendere?"
+    if (showExpiryDialog) {
+        AlertDialog(
+            onDismissRequest = {},
+            containerColor = Surface,
+            title = { Text("Sessione scaduta", color = Warning, fontWeight = FontWeight.Bold) },
+            text = { Text("Il turno è terminato. Vuoi estendere la sessione?", color = TextPrimary, fontSize = 14.sp) },
+            confirmButton = {
+                Button(
+                    onClick = { sessionExpiry.extend(1); showExpiryDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = Protected),
+                    shape = RoundedCornerShape(10.dp),
+                ) { Text("+1 ora", fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { sessionExpiry.extend(2) }) { Text("+2 ore", color = TextSecondary) }
+                    TextButton(onClick = {
+                        showExpiryDialog = false
+                        // End session
+                        appState = ScreenState.STANDBY; sessionStart = null
+                        prefs.edit().putString("current_state", "standby").commit()
+                        scope.launch { try { currentSessionId?.let { supabase.endSession(it) } } catch (_: Exception) {} }
+                        fallDetector.stop(); immobilityDetector.stop(); maloreDetector.stop(); sessionExpiry.stop()
+                        heartbeat.startStandby()
+                        try { SoloSafeService.startStandby(context) } catch (_: Exception) {}
+                    }) { Text("Termina", color = Alarm) }
                 }
             },
         )
@@ -459,6 +536,14 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                         }
                     }
 
+                    // Expiry warning
+                    expiryMessage?.let { msg ->
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFF3D2A00), modifier = Modifier.fillMaxWidth()) {
+                            Text(msg, color = Warning, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(12.dp))
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(24.dp))
 
                     OutlinedButton(
@@ -476,7 +561,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                                 }
                             }
                             currentSessionId = null
-                            fallDetector.stop(); immobilityDetector.stop(); maloreDetector.stop()
+                            fallDetector.stop(); immobilityDetector.stop(); maloreDetector.stop(); sessionExpiry.stop()
                             heartbeat.startStandby()
                             try { SoloSafeService.startStandby(context) } catch (_: Exception) {}
                             HeartbeatManager.scheduleWorkManagerFallback(context, "standby")
