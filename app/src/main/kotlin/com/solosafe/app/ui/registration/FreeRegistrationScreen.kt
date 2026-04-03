@@ -29,8 +29,6 @@ import com.solosafe.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 
 @Composable
 fun FreeRegistrationScreen(
@@ -127,14 +125,7 @@ fun FreeRegistrationScreen(
                         try {
                             withContext(Dispatchers.IO) {
                                 val supa = SupabaseClient()
-                                val body = buildJsonObject {
-                                    put("name", name.trim())
-                                    if (email.isNotBlank()) put("email", email.trim())
-                                    if (phone.isNotBlank()) put("phone", phone.trim())
-                                    if (company.isNotBlank()) put("company", company.trim())
-                                    put("device_model", "${Build.MANUFACTURER} ${Build.MODEL}")
-                                }
-                                io.github.jan.supabase.postgrest.from(supa.client, "free_users").insert(body)
+                                supa.registerFreeUser(name.trim(), email.trim(), phone.trim(), company.trim(), "${Build.MANUFACTURER} ${Build.MODEL}")
                             }
                             // Save free user state
                             context.getSharedPreferences(SoloSafeApp.PREFS_NAME, Context.MODE_PRIVATE).edit()

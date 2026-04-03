@@ -142,6 +142,18 @@ class SupabaseClient @Inject constructor() {
         }
     }
 
+    /** Register a free user */
+    suspend fun registerFreeUser(name: String, email: String, phone: String, company: String, deviceModel: String) = withContext(Dispatchers.IO) {
+        client.from("free_users").insert(buildJsonObject {
+            put("name", name)
+            if (email.isNotBlank()) put("email", email)
+            if (phone.isNotBlank()) put("phone", phone)
+            if (company.isNotBlank()) put("company", company)
+            put("device_model", deviceModel)
+        })
+        Log.d("SoloSafe", "Free user registered: $name")
+    }
+
     suspend fun getOperatorConfig(configToken: String): OperatorConfig? = withContext(Dispatchers.IO) {
         try {
             client.from("operators")
