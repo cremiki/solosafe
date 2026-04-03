@@ -291,9 +291,8 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
             title = { Text("Avvia protezione", color = TextPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SessionOption("30 minuti (test)", "turno", 0) { type, _ ->
+                    SessionOption("5 minuti (test)", "turno", 0) { type, _ ->
                         sessionType = type; sessionDurationHours = 0; showSessionDialog = false
-                        // 30 min = pass as minutes via a special value
                         startSession(scope, context, supabase, heartbeat, operatorId, companyId, defaultPreset, type, null, onSuccess = { sid ->
                             appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis(); currentSessionId = sid
                             prefs.edit().putString("current_state", "protected").commit()
@@ -301,7 +300,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                             heartbeat.startProtected()
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
                             fallDetector.start(); immobilityDetector.start(); maloreDetector.start()
-                            sessionExpiry.start(System.currentTimeMillis() + 30 * 60_000L)
+                            sessionExpiry.start(System.currentTimeMillis() + 5 * 60_000L)
                         }, onSlotsFull = { slotError = true })
                     }
                     SessionOption("1 ora", "turno", 1) { type, hours ->
