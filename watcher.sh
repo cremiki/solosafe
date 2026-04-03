@@ -50,6 +50,9 @@ else
     APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
     if [ -f "$APK" ]; then
         adb -s BV6600EEA0046274 install -r "$APK" 2>/dev/null && echo "📱 APK installato su BV6600"
+                scp "$APK" root@46.224.181.59:/opt/solosafe/apk-releases/solosafe-latest.apk 2>/dev/null
+                ssh root@46.224.181.59 "echo '{\"version\":\"$(date +%Y%m%d-%H%M)\",\"built_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"downloads\":0}' > /opt/solosafe/apk-releases/build-info.json" 2>/dev/null
+                echo "☁️ APK caricato sul server"
     fi
 fi
 
@@ -78,6 +81,9 @@ $ERRORS"
         APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
         if [ -f "$APK" ]; then
             adb -s BV6600EEA0046274 install -r "$APK" 2>/dev/null && echo "📱 APK installato su BV6600"
+                scp "$APK" root@46.224.181.59:/opt/solosafe/apk-releases/solosafe-latest.apk 2>/dev/null
+                ssh root@46.224.181.59 "echo '{\"version\":\"$(date +%Y%m%d-%H%M)\",\"built_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"downloads\":0}' > /opt/solosafe/apk-releases/build-info.json" 2>/dev/null
+                echo "☁️ APK caricato sul server"
         fi
     fi
 done
