@@ -15,6 +15,7 @@ import com.solosafe.app.ui.main.SimpleMainScreen
 import com.solosafe.app.ui.qr.QrScanScreen
 import com.solosafe.app.ui.settings.SettingsScreen
 import com.solosafe.app.ui.welcome.WelcomeScreen
+import com.solosafe.app.ui.permissions.PermissionScreen
 import com.solosafe.app.ui.theme.SoloSafeTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -27,7 +28,12 @@ class MainActivity : ComponentActivity() {
 
         val prefs = getSharedPreferences(SoloSafeApp.PREFS_NAME, Context.MODE_PRIVATE)
         val operatorId = prefs.getString(SoloSafeApp.KEY_OPERATOR_ID, null)
-        val startDest = if (operatorId != null) "main" else "welcome"
+        val permsDone = prefs.getBoolean("permissions_done", false)
+        val startDest = when {
+            operatorId == null -> "welcome"
+            !permsDone -> "permissions"
+            else -> "main"
+        }
         Log.d("SoloSafe", "onCreate: operator_id=${operatorId ?: "NULL"}, startDest=$startDest")
 
         setContent {
@@ -47,6 +53,15 @@ class MainActivity : ComponentActivity() {
                             onScanned = { /* Activity restarts itself */ },
                             onBack = { navController.popBackStack() },
                         )
+                    }
+
+                    composable("permissions") {
+                        PermissionScreen(onAllGranted = {
+                            prefs.edit().putBoolean("permissions_done", true).commit()
+                            navController.navigate("main") {
+                                popUpTo(navController.graph.startDestinationId) { inclusive = true }
+                            }
+                        })
                     }
 
                     composable("main") {
