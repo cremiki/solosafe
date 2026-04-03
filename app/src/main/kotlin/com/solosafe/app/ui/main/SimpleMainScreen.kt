@@ -130,7 +130,6 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
             } catch (e: Exception) {
                 Log.e("SoloSafe", "Fall event handler error: ${e.message}")
             }
-            }
         }
     }
 
