@@ -605,35 +605,28 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    OutlinedButton(
-                        onClick = {
-                            appState = ScreenState.STANDBY
-                            sessionStart = null
-                            prefs.edit().putString("current_state", "standby").commit()
-                            scope.launch {
-                                try {
-                                    if (currentSessionId != null) {
-                                        supabase.endSession(currentSessionId!!)
-                                    } else {
-                                        supabase.endAllSessions(operatorId)
-                                    }
-                                    supabase.sendHeartbeat(operatorId, "standby", 0, null, null, null)
-                                    Log.d("SoloSafe", "Session ended + status set to standby")
-                                } catch (e: Exception) {
-                                    Log.e("SoloSafe", "End session error: ${e.message}")
+                    SwipeToConfirm(text = "Scorri per terminare") {
+                        appState = ScreenState.STANDBY
+                        sessionStart = null
+                        prefs.edit().putString("current_state", "standby").commit()
+                        scope.launch {
+                            try {
+                                if (currentSessionId != null) {
+                                    supabase.endSession(currentSessionId!!)
+                                } else {
+                                    supabase.endAllSessions(operatorId)
                                 }
+                                supabase.sendHeartbeat(operatorId, "standby", 0, null, null, null)
+                                Log.d("SoloSafe", "Session ended + status set to standby")
+                            } catch (e: Exception) {
+                                Log.e("SoloSafe", "End session error: ${e.message}")
                             }
-                            currentSessionId = null
-                            fallDetector.stop(); immobilityDetector.stop(); maloreDetector.stop(); sessionExpiry.stop()
-                            heartbeat.startStandby()
-                            try { SoloSafeService.startStandby(context) } catch (_: Exception) {}
-                            HeartbeatManager.scheduleWorkManagerFallback(context, "standby")
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
-                    ) {
-                        Text("Termina protezione", fontWeight = FontWeight.Medium)
+                        }
+                        currentSessionId = null
+                        fallDetector.stop(); immobilityDetector.stop(); maloreDetector.stop(); sessionExpiry.stop()
+                        heartbeat.startStandby()
+                        try { SoloSafeService.startStandby(context) } catch (_: Exception) {}
+                        HeartbeatManager.scheduleWorkManagerFallback(context, "standby")
                     }
                 }
 
