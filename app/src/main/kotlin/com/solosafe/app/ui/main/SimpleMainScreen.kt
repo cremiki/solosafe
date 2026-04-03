@@ -786,6 +786,23 @@ private fun startSession(
                     java.time.Instant.now().plusSeconds(it.toLong() * 3600).toString()
                 }
                 sessionId = supabase.startSession(operatorId, companyId, sessionType, preset, plannedEnd)
+
+                // Log current alarm settings at session start (only non-default values)
+                val sp = context.getSharedPreferences(com.solosafe.app.SoloSafeApp.PREFS_NAME, Context.MODE_PRIVATE)
+                val maloreOn = sp.getBoolean("malore_enabled", true)
+                val fallOn = sp.getBoolean("fall_enabled", true)
+                val immOn = sp.getBoolean("immobility_enabled", true)
+                val angle = sp.getFloat("malore_angle", 45f).toInt()
+                val gThreshold = sp.getFloat("fall_threshold_g", 2.5f)
+                val immSec = sp.getFloat("immobility_seconds", 90f).toInt()
+                // Log non-defaults
+                if (!maloreOn) supabase.logConfigChange(operatorId, companyId, "malore_enabled", "default:true", "false")
+                if (!fallOn) supabase.logConfigChange(operatorId, companyId, "fall_enabled", "default:true", "false")
+                if (!immOn) supabase.logConfigChange(operatorId, companyId, "immobility_enabled", "default:true", "false")
+                if (angle != 45) supabase.logConfigChange(operatorId, companyId, "malore_angle", "default:45", "$angle")
+                if (gThreshold != 2.5f) supabase.logConfigChange(operatorId, companyId, "fall_threshold_g", "default:2.5", "${"%.1f".format(gThreshold)}")
+                if (immSec != 90) supabase.logConfigChange(operatorId, companyId, "immobility_seconds", "default:90", "$immSec")
+
                 val gps = heartbeat.getLastLocation()
                 val battery = (context.getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager)
                     .getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
