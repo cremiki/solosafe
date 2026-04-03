@@ -116,7 +116,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 if (manDownEnabled) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("Angolazione: ${manDownAngle.roundToInt()}°", color = TextSecondary, fontSize = 12.sp)
-                    Slider(value = manDownAngle, onValueChange = { manDownAngle = it; savePrefs() },
+                    Slider(value = manDownAngle, onValueChange = { manDownAngle = it },
+                        onValueChangeFinished = { savePrefs(); logChange("malore_angle", "", "${manDownAngle.roundToInt()}") },
                         valueRange = 20f..90f, steps = 13,
                         colors = SliderDefaults.colors(thumbColor = SoloSafeRed, activeTrackColor = SoloSafeRed))
                 }
@@ -135,7 +136,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 if (fallEnabled) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("Soglia: ${"%.1f".format(fallThresholdG)}g", color = TextSecondary, fontSize = 12.sp)
-                    Slider(value = fallThresholdG, onValueChange = { fallThresholdG = it; savePrefs() },
+                    Slider(value = fallThresholdG, onValueChange = { fallThresholdG = it },
+                        onValueChangeFinished = { savePrefs(); logChange("fall_threshold_g", "", "${"%.1f".format(fallThresholdG)}") },
                         valueRange = 1.5f..4.0f, steps = 24,
                         colors = SliderDefaults.colors(thumbColor = SoloSafeRed, activeTrackColor = SoloSafeRed))
                 }
@@ -154,7 +156,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 if (immobilityEnabled) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("Pre-allarme dopo: ${immobilitySeconds.roundToInt()}s", color = TextSecondary, fontSize = 12.sp)
-                    Slider(value = immobilitySeconds, onValueChange = { immobilitySeconds = it; savePrefs() },
+                    Slider(value = immobilitySeconds, onValueChange = { immobilitySeconds = it },
+                        onValueChangeFinished = { savePrefs(); logChange("immobility_seconds", "", "${immobilitySeconds.roundToInt()}") },
                         valueRange = 30f..300f, steps = 26,
                         colors = SliderDefaults.colors(thumbColor = SoloSafeRed, activeTrackColor = SoloSafeRed))
                 }
