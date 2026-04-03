@@ -61,6 +61,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
     var currentSessionId by remember { mutableStateOf<String?>(null) }
     var showExpiryDialog by remember { mutableStateOf(false) }
     var expiryMessage by remember { mutableStateOf<String?>(null) }
+    var slotError by remember { mutableStateOf(false) }
     var showSessionDialog by remember { mutableStateOf(false) }
     var sosMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
@@ -273,7 +274,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SessionOption("Turno 8 ore", "turno", 8) { type, hours ->
                         sessionType = type; sessionDurationHours = hours; showSessionDialog = false
-                        startSession(scope, context, supabase, heartbeat, operatorId, companyId, defaultPreset, type, hours) { sid ->
+                        startSession(scope, context, supabase, heartbeat, operatorId, companyId, defaultPreset, type, hours, onSuccess = { sid ->
                             appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis(); currentSessionId = sid
                             prefs.edit().putString("current_state", "protected").commit()
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
@@ -281,11 +282,11 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
                             fallDetector.start(); immobilityDetector.start(); maloreDetector.start()
                             if (hours > 0) sessionExpiry.start(System.currentTimeMillis() + hours * 3600_000L)
-                        }
+                        }, onSlotsFull = { slotError = true })
                     }
                     SessionOption("Turno 4 ore", "turno", 4) { type, hours ->
                         sessionType = type; sessionDurationHours = hours; showSessionDialog = false
-                        startSession(scope, context, supabase, heartbeat, operatorId, companyId, defaultPreset, type, hours) { sid ->
+                        startSession(scope, context, supabase, heartbeat, operatorId, companyId, defaultPreset, type, hours, onSuccess = { sid ->
                             appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis(); currentSessionId = sid
                             prefs.edit().putString("current_state", "protected").commit()
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
@@ -293,7 +294,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
                             fallDetector.start(); immobilityDetector.start(); maloreDetector.start()
                             if (hours > 0) sessionExpiry.start(System.currentTimeMillis() + hours * 3600_000L)
-                        }
+                        }, onSlotsFull = { slotError = true })
                     }
                     SessionOption("Continua (H24)", "continua", 0) { type, _ ->
                         sessionType = type; sessionDurationHours = 0; showSessionDialog = false
@@ -305,7 +306,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
                             fallDetector.start(); immobilityDetector.start(); maloreDetector.start()
                             if (hours > 0) sessionExpiry.start(System.currentTimeMillis() + hours * 3600_000L)
-                        }
+                        }, onSlotsFull = { slotError = true })
                     }
                 }
             },
@@ -315,6 +316,17 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                     Text("Annulla", color = TextSecondary)
                 }
             },
+        )
+    }
+
+    // Slot full error
+    if (slotError) {
+        AlertDialog(
+            onDismissRequest = { slotError = false },
+            containerColor = Surface,
+            title = { Text("Slot esauriti", color = Alarm, fontWeight = FontWeight.Bold) },
+            text = { Text("Tutti gli slot concorrenti sono occupati. Contatta il responsabile.", color = TextPrimary, fontSize = 14.sp) },
+            confirmButton = { TextButton(onClick = { slotError = false }) { Text("OK", color = TextSecondary) } },
         )
     }
 
@@ -674,10 +686,19 @@ private fun startSession(
     sessionType: String,
     durationHours: Int?,
     onSuccess: (sessionId: String?) -> Unit,
+    onSlotsFull: () -> Unit = {},
 ) {
     scope.launch {
         var sessionId: String? = null
         try {
+            // Slot check first
+            val slotsOk = withContext(Dispatchers.IO) { supabase.checkSlotAvailable(companyId) }
+            if (!slotsOk) {
+                Log.w("SoloSafe", "No slots available!")
+                onSlotsFull()
+                return@launch
+            }
+
             withContext(Dispatchers.IO) {
                 val plannedEnd = durationHours?.let {
                     java.time.Instant.now().plusSeconds(it.toLong() * 3600).toString()

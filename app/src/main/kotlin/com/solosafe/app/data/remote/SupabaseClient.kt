@@ -122,6 +122,32 @@ class SupabaseClient @Inject constructor() {
         }
     }
 
+    /** Check if slots are available for this company */
+    suspend fun checkSlotAvailable(companyId: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            // Get max slots
+            val company = client.from("companies")
+                .select { filter { eq("id", companyId) } }
+                .decodeSingleOrNull<CompanySlots>()
+            val maxSlots = company?.concurrent_slots ?: 5
+
+            // Count active sessions
+            val activeSessions = client.from("work_sessions")
+                .select { filter { eq("company_id", companyId); eq("status", "active") } }
+                .decodeList<SessionResponse>()
+
+            val available = activeSessions.size < maxSlots
+            Log.d("SoloSafe", "Slot check: ${activeSessions.size}/$maxSlots — ${if (available) "OK" else "FULL"}")
+            available
+        } catch (e: Exception) {
+            Log.e("SoloSafe", "Slot check failed: ${e.message}")
+            true // Allow on error
+        }
+    }
+
+    @Serializable
+    data class CompanySlots(val concurrent_slots: Int = 5)
+
     /** Log a settings change to Supabase */
     suspend fun logConfigChange(
         operatorId: String, companyId: String,
