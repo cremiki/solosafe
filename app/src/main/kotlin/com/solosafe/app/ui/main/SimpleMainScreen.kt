@@ -100,6 +100,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                     supabase.sendAlarm(operatorId, companyId, type, gps?.first, gps?.second)
                     supabase.sendHeartbeat(operatorId, "alarm", 0, null, gps?.first, gps?.second)
                     SmsAlertManager.sendAlertSms(context, type, operatorName, gps?.first, gps?.second)
+                    supabase.notifyAlarmService(operatorId, operatorName, type, gps?.first, gps?.second)
                 }
                 Log.d("SoloSafe", "Alarm sent: $type")
             } catch (e: Exception) {
@@ -710,6 +711,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                                 supabase.sendAlarm(operatorId, companyId, "SOS", gps?.first, gps?.second)
                                 supabase.sendHeartbeat(operatorId, "alarm", 0, null, gps?.first, gps?.second)
                                 SmsAlertManager.sendAlertSms(context, "SOS", operatorName, gps?.first, gps?.second)
+                                supabase.notifyAlarmService(operatorId, operatorName, "SOS", gps?.first, gps?.second)
                             }
                             appState = ScreenState.SOS_SENT
                             sosMessage = "✓ Allarme inviato!"

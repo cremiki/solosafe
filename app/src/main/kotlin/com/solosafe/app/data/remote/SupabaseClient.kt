@@ -117,6 +117,28 @@ class SupabaseClient @Inject constructor() {
         result.id
     }
 
+    /** Notify alarm service for call cascade (fire-and-forget) */
+    fun notifyAlarmService(operatorId: String, operatorName: String, type: String, lat: Double?, lng: Double?) {
+        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+            try {
+                val url = java.net.URL("http://46.224.181.59:3001/alarm")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
+                val body = """{"operator_id":"$operatorId","type":"$type","lat":${lat ?: "null"},"lng":${lng ?: "null"},"operator_name":"$operatorName"}"""
+                conn.outputStream.write(body.toByteArray())
+                val code = conn.responseCode
+                Log.d("SoloSafe", "Alarm service notified: $code")
+                conn.disconnect()
+            } catch (e: Exception) {
+                Log.w("SoloSafe", "Alarm service notify failed: ${e.message}")
+            }
+        }
+    }
+
     suspend fun getOperatorConfig(configToken: String): OperatorConfig? = withContext(Dispatchers.IO) {
         try {
             client.from("operators")
