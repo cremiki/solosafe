@@ -184,9 +184,18 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                 is SessionExpiryManager.Event.Warning15 -> {
                     expiryMessage = "Sessione in scadenza tra 15 minuti"
                 }
+                is SessionExpiryManager.Event.Warning10 -> {
+                    expiryMessage = "⚠ Mancano 10 minuti alla scadenza"
+                    alarmSound.startPreAlarm()
+                }
+                is SessionExpiryManager.Event.Warning5 -> {
+                    expiryMessage = "⚠ Mancano 5 minuti alla scadenza!"
+                    alarmSound.startPreAlarm()
+                }
                 is SessionExpiryManager.Event.Expired -> {
                     showExpiryDialog = true
                     expiryMessage = null
+                    alarmSound.stop()
                 }
                 is SessionExpiryManager.Event.PreAlarm -> {
                     showExpiryDialog = false
@@ -201,6 +210,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                 is SessionExpiryManager.Event.Extended -> {
                     showExpiryDialog = false
                     expiryMessage = "Sessione estesa"
+                    alarmSound.stop()
                 }
             }
         }

@@ -15,7 +15,9 @@ import kotlinx.coroutines.flow.SharedFlow
 class SessionExpiryManager {
 
     sealed class Event {
-        data object Warning15 : Event()      // T-15 min
+        data object Warning10 : Event()      // T-10 min (sound)
+        data object Warning5 : Event()       // T-5 min (sound)
+        data object Warning15 : Event()      // T-15 min (text only)
         data object Expired : Event()        // T0
         data object PreAlarm : Event()       // T+5 min
         data object Alarm : Event()          // T+8 min — auto alarm
@@ -29,6 +31,8 @@ class SessionExpiryManager {
     private var monitorJob: Job? = null
     private var endTime: Long = 0
     private var warned15 = false
+    private var warned10 = false
+    private var warned5 = false
     private var expiredNotified = false
     private var preAlarmNotified = false
 
@@ -36,6 +40,8 @@ class SessionExpiryManager {
         stop()
         endTime = plannedEndTimeMs
         warned15 = false
+        warned10 = false
+        warned5 = false
         expiredNotified = false
         preAlarmNotified = false
 
@@ -47,11 +53,25 @@ class SessionExpiryManager {
                 val remaining = endTime - System.currentTimeMillis()
                 val remainingMin = remaining / 60_000
 
-                // T-15
+                // T-15 (text only)
                 if (!warned15 && remaining in 0..15 * 60_000) {
                     warned15 = true
                     Log.d("SoloSafe", "SessionExpiry: T-15 warning")
                     _events.emit(Event.Warning15)
+                }
+
+                // T-10 (sound alert)
+                if (!warned10 && remaining in 0..10 * 60_000) {
+                    warned10 = true
+                    Log.d("SoloSafe", "SessionExpiry: T-10 sound warning")
+                    _events.emit(Event.Warning10)
+                }
+
+                // T-5 (sound alert)
+                if (!warned5 && remaining in 0..5 * 60_000) {
+                    warned5 = true
+                    Log.d("SoloSafe", "SessionExpiry: T-5 sound warning")
+                    _events.emit(Event.Warning5)
                 }
 
                 // T0
@@ -81,6 +101,9 @@ class SessionExpiryManager {
     /** Extend session by given hours */
     fun extend(extraHours: Int) {
         endTime += extraHours * 3600_000L
+        warned15 = false
+        warned10 = false
+        warned5 = false
         expiredNotified = false
         preAlarmNotified = false
         scope.launch {
