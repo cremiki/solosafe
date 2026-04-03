@@ -38,10 +38,11 @@ class HeartbeatManager(
     fun startProtected() {
         stop()
         job = scope.launch {
-            Log.d("SoloSafe", "Heartbeat PROTECTED: every 5min")
+            val interval = com.solosafe.app.utils.FeatureManager.heartbeatInterval(context)
+            Log.d("SoloSafe", "Heartbeat PROTECTED: every ${interval/60000}min")
             sendHeartbeat("protected")
             while (isActive) {
-                delay(5 * 60 * 1000L) // 5 minutes
+                delay(interval)
                 sendHeartbeat("protected")
             }
         }

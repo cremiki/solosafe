@@ -30,6 +30,7 @@ import com.solosafe.app.service.SoloSafeService
 import com.solosafe.app.service.HeartbeatManager
 import com.solosafe.app.service.SessionExpiryManager
 import com.solosafe.app.service.SmsAlertManager
+import com.solosafe.app.utils.FeatureManager
 import com.solosafe.app.service.OfflineSyncManager
 import androidx.room.Room
 import com.solosafe.app.data.local.AppDatabase
@@ -99,8 +100,10 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                 withContext(Dispatchers.IO) {
                     supabase.sendAlarm(operatorId, companyId, type, gps?.first, gps?.second)
                     supabase.sendHeartbeat(operatorId, "alarm", 0, null, gps?.first, gps?.second)
-                    SmsAlertManager.sendAlertSms(context, type, operatorName, gps?.first, gps?.second)
-                    supabase.notifyAlarmService(operatorId, operatorName, type, gps?.first, gps?.second)
+                    if (FeatureManager.canSendExternalNotification(context, type)) {
+                        SmsAlertManager.sendAlertSms(context, type, operatorName, gps?.first, gps?.second)
+                        supabase.notifyAlarmService(operatorId, operatorName, type, gps?.first, gps?.second)
+                    }
                 }
                 Log.d("SoloSafe", "Alarm sent: $type")
             } catch (e: Exception) {
@@ -314,7 +317,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
                             heartbeat.startProtected()
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
-                            fallDetector.start(); immobilityDetector.start(); maloreDetector.start()
+                            if (FeatureManager.canUseAutoDetector(context)) { fallDetector.start(); immobilityDetector.start(); maloreDetector.start() }
                             sessionExpiry.start(System.currentTimeMillis() + 5 * 60_000L)
                         }, onSlotsFull = { slotError = true })
                     }
@@ -326,7 +329,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
                             heartbeat.startProtected()
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
-                            fallDetector.start(); immobilityDetector.start(); maloreDetector.start()
+                            if (FeatureManager.canUseAutoDetector(context)) { fallDetector.start(); immobilityDetector.start(); maloreDetector.start() }
                             if (hours > 0) sessionExpiry.start(System.currentTimeMillis() + hours * 3600_000L)
                         }, onSlotsFull = { slotError = true })
                     }
@@ -338,7 +341,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
                             heartbeat.startProtected()
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
-                            fallDetector.start(); immobilityDetector.start(); maloreDetector.start()
+                            if (FeatureManager.canUseAutoDetector(context)) { fallDetector.start(); immobilityDetector.start(); maloreDetector.start() }
                             if (hours > 0) sessionExpiry.start(System.currentTimeMillis() + hours * 3600_000L)
                         }, onSlotsFull = { slotError = true })
                     }
@@ -350,7 +353,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
                             heartbeat.startProtected()
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
-                            fallDetector.start(); immobilityDetector.start(); maloreDetector.start()
+                            if (FeatureManager.canUseAutoDetector(context)) { fallDetector.start(); immobilityDetector.start(); maloreDetector.start() }
                             if (hours > 0) sessionExpiry.start(System.currentTimeMillis() + hours * 3600_000L)
                         }, onSlotsFull = { slotError = true })
                     }
@@ -362,7 +365,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
                             heartbeat.startProtected()
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
-                            fallDetector.start(); immobilityDetector.start(); maloreDetector.start()
+                            if (FeatureManager.canUseAutoDetector(context)) { fallDetector.start(); immobilityDetector.start(); maloreDetector.start() }
                             // Continua: no expiry
                         }, onSlotsFull = { slotError = true })
                     }
@@ -690,6 +693,15 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
             }
 
             Spacer(modifier = Modifier.weight(1f))
+
+            // FREE banner
+            if (FeatureManager.isFree(context)) {
+                Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFF1A1A2E), modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                    Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("🔓 Versione gratuita — Solo SOS attivo", color = TextSecondary, fontSize = 11.sp)
+                    }
+                }
+            }
 
             // SOS feedback
             sosMessage?.let { msg ->
