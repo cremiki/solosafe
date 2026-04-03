@@ -29,6 +29,7 @@ import com.solosafe.app.sensor.PresetThresholds
 import com.solosafe.app.service.SoloSafeService
 import com.solosafe.app.service.HeartbeatManager
 import com.solosafe.app.service.SessionExpiryManager
+import com.solosafe.app.service.SmsAlertManager
 import com.solosafe.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -94,6 +95,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                         val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
                         withContext(Dispatchers.IO) {
                             supabase.sendAlarm(operatorId, companyId, "MAN_DOWN", gps?.first, gps?.second)
+                            SmsAlertManager.sendAlertSms(context, "MAN_DOWN", operatorName, gps?.first, gps?.second)
                         }
                         appState = ScreenState.SOS_SENT
                         sosMessage = "Allarme Man Down inviato!"
@@ -123,6 +125,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                         val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
                         withContext(Dispatchers.IO) {
                             supabase.sendAlarm(operatorId, companyId, "IMMOBILITY", gps?.first, gps?.second)
+                            SmsAlertManager.sendAlertSms(context, "IMMOBILITA", operatorName, gps?.first, gps?.second)
                         }
                         appState = ScreenState.SOS_SENT
                         sosMessage = "Allarme immobilità inviato!"
@@ -154,6 +157,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                         val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
                         withContext(Dispatchers.IO) {
                             supabase.sendAlarm(operatorId, companyId, "MALORE", gps?.first, gps?.second)
+                            SmsAlertManager.sendAlertSms(context, "MALORE", operatorName, gps?.first, gps?.second)
                         }
                         appState = ScreenState.SOS_SENT
                         sosMessage = "Allarme Malore inviato!"
@@ -191,6 +195,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                         val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
                         withContext(Dispatchers.IO) {
                             supabase.sendAlarm(operatorId, companyId, "SESSION_EXPIRED", gps?.first, gps?.second)
+                            SmsAlertManager.sendAlertSms(context, "SESSIONE SCADUTA", operatorName, gps?.first, gps?.second)
                         }
                         appState = ScreenState.SOS_SENT
                         sosMessage = "Sessione scaduta — allarme inviato!"
@@ -610,6 +615,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                             val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
                             withContext(Dispatchers.IO) {
                                 supabase.sendAlarm(operatorId, companyId, "SOS", gps?.first, gps?.second)
+                                SmsAlertManager.sendAlertSms(context, "SOS", operatorName, gps?.first, gps?.second)
                             }
                             appState = ScreenState.SOS_SENT
                             sosMessage = "✓ Allarme inviato!"
