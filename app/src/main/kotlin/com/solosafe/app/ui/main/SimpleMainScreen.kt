@@ -106,7 +106,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
         }
     }
 
-    // Collect fall detector events
+    // Collect fall detector events (only PreAlarm — alarm sent by countdown)
     LaunchedEffect(Unit) {
         fallDetector.events.collect { event ->
             try {
@@ -118,22 +118,18 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                             alarmSound.startPreAlarm()
                         }
                     }
-                    is FallDetector.Event.Alarm -> {
-                        preAlarmType = PreAlarmType.NONE
-                        fireAlarm("MAN_DOWN", "Allarme Man Down inviato!")
-                    }
                     is FallDetector.Event.Cancelled -> {
                         preAlarmType = PreAlarmType.NONE
                         alarmSound.stop()
                     }
                 }
             } catch (e: Exception) {
-                Log.e("SoloSafe", "Fall event handler error: ${e.message}")
+                Log.e("SoloSafe", "Fall event error: ${e.message}")
             }
         }
     }
 
-    // Collect immobility detector events
+    // Collect immobility detector events (only PreAlarm)
     LaunchedEffect(Unit) {
         immobilityDetector.events.collect { event ->
             try {
@@ -145,18 +141,13 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                             alarmSound.startPreAlarm()
                         }
                     }
-                    is ImmobilityDetector.Event.Alarm -> {
-                        preAlarmType = PreAlarmType.NONE
-                        fireAlarm("IMMOBILITY", "Allarme immobilità inviato!")
-                    }
+                    is ImmobilityDetector.Event.Alarm -> {} // handled by countdown
                     is ImmobilityDetector.Event.Cancelled -> {
                         preAlarmType = PreAlarmType.NONE
                         alarmSound.stop()
                     }
                 }
-            } catch (e: Exception) {
-                Log.e("SoloSafe", "Immobility event error: ${e.message}")
-            }
+            } catch (_: Exception) {}
         }
     }
 
@@ -174,10 +165,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                             alarmSound.startPreAlarm()
                         }
                     }
-                    is MaloreDetector.Event.Alarm -> {
-                        preAlarmType = PreAlarmType.NONE
-                        fireAlarm("MALORE", "Allarme Malore inviato!")
-                    }
+                    is MaloreDetector.Event.Alarm -> {} // handled by countdown
                     is MaloreDetector.Event.Cancelled -> {
                         preAlarmType = PreAlarmType.NONE
                         alarmSound.stop()
@@ -218,17 +206,32 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
         }
     }
 
-    // Pre-alarm countdown timer — cancels automatically when preAlarmType changes
+    // Pre-alarm countdown — when reaches 0, fire alarm
     LaunchedEffect(preAlarmType) {
         if (preAlarmType != PreAlarmType.NONE) {
+            val alarmType = preAlarmType
             try {
                 preAlarmCountdown = 30
                 while (preAlarmCountdown > 0) {
                     delay(1000)
                     preAlarmCountdown--
                 }
+                // Countdown reached 0 — send alarm
+                val type = when (alarmType) {
+                    PreAlarmType.MAN_DOWN -> "MAN_DOWN"
+                    PreAlarmType.MALORE -> "MALORE"
+                    PreAlarmType.IMMOBILITY -> "IMMOBILITY"
+                    else -> "SOS"
+                }
+                val msg = when (alarmType) {
+                    PreAlarmType.MAN_DOWN -> "Allarme Man Down inviato!"
+                    PreAlarmType.MALORE -> "Allarme Malore inviato!"
+                    PreAlarmType.IMMOBILITY -> "Allarme Immobilità inviato!"
+                    else -> "Allarme inviato!"
+                }
+                fireAlarm(type, msg)
             } catch (_: kotlinx.coroutines.CancellationException) {
-                // Normal cancellation when user presses "STO BENE"
+                // User pressed "STO BENE"
             } catch (e: Exception) {
                 Log.e("SoloSafe", "Countdown error: ${e.message}")
             }
