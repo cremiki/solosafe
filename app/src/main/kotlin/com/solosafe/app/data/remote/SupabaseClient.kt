@@ -8,6 +8,8 @@ import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.realtime.Realtime
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
@@ -119,7 +121,8 @@ class SupabaseClient @Inject constructor() {
 
     /** Notify alarm service for call cascade (fire-and-forget) */
     fun notifyAlarmService(operatorId: String, operatorName: String, type: String, lat: Double?, lng: Double?) {
-        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+        @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+        GlobalScope.launch(Dispatchers.IO) {
             try {
                 val url = java.net.URL("http://46.224.181.59:3001/alarm")
                 val conn = url.openConnection() as java.net.HttpURLConnection
