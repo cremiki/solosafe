@@ -85,33 +85,51 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
     val immobilityDetector = remember { ImmobilityDetector(context, thresholds) }
     val maloreDetector = remember { MaloreDetector(context) }
 
+    // Helper: send alarm safely without crashing UI
+    fun fireAlarm(type: String, message: String) {
+        preAlarmType = PreAlarmType.NONE
+        alarmSound.startFullAlarm()
+        appState = ScreenState.SOS_SENT
+        sosMessage = message
+        scope.launch {
+            try {
+                val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
+                withContext(Dispatchers.IO) {
+                    supabase.sendAlarm(operatorId, companyId, type, gps?.first, gps?.second)
+                    supabase.sendHeartbeat(operatorId, "alarm", 0, null, gps?.first, gps?.second)
+                    SmsAlertManager.sendAlertSms(context, type, operatorName, gps?.first, gps?.second)
+                }
+                Log.d("SoloSafe", "Alarm sent: $type")
+            } catch (e: Exception) {
+                Log.e("SoloSafe", "Alarm send failed: ${e.message}")
+            }
+        }
+    }
+
     // Collect fall detector events
     LaunchedEffect(Unit) {
         fallDetector.events.collect { event ->
-            when (event) {
-                is FallDetector.Event.PreAlarm -> {
-                    preAlarmType = PreAlarmType.MAN_DOWN
-                    preAlarmCountdown = 30
-                    alarmSound.startPreAlarm()
-                }
-                is FallDetector.Event.Alarm -> {
-                    preAlarmType = PreAlarmType.NONE
-                    alarmSound.startFullAlarm()
-                    try {
-                        val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
-                        withContext(Dispatchers.IO) {
-                            supabase.sendAlarm(operatorId, companyId, "MAN_DOWN", gps?.first, gps?.second)
-                            supabase.sendHeartbeat(operatorId, "alarm", 0, null, gps?.first, gps?.second)
-                            SmsAlertManager.sendAlertSms(context, "MAN_DOWN", operatorName, gps?.first, gps?.second)
+            try {
+                when (event) {
+                    is FallDetector.Event.PreAlarm -> {
+                        if (preAlarmType == PreAlarmType.NONE) {
+                            preAlarmType = PreAlarmType.MAN_DOWN
+                            preAlarmCountdown = 30
+                            alarmSound.startPreAlarm()
                         }
-                        appState = ScreenState.SOS_SENT
-                        sosMessage = "Allarme Man Down inviato!"
-                    } catch (_: Exception) {}
+                    }
+                    is FallDetector.Event.Alarm -> {
+                        preAlarmType = PreAlarmType.NONE
+                        fireAlarm("MAN_DOWN", "Allarme Man Down inviato!")
+                    }
+                    is FallDetector.Event.Cancelled -> {
+                        preAlarmType = PreAlarmType.NONE
+                        alarmSound.stop()
+                    }
                 }
-                is FallDetector.Event.Cancelled -> {
-                    preAlarmType = PreAlarmType.NONE
-                    alarmSound.stop()
-                }
+            } catch (e: Exception) {
+                Log.e("SoloSafe", "Fall event handler error: ${e.message}")
+            }
             }
         }
     }
@@ -119,63 +137,55 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
     // Collect immobility detector events
     LaunchedEffect(Unit) {
         immobilityDetector.events.collect { event ->
-            when (event) {
-                is ImmobilityDetector.Event.PreAlarm -> {
-                    preAlarmType = PreAlarmType.IMMOBILITY
-                    preAlarmCountdown = 30
-                    alarmSound.startPreAlarm()
-                }
-                is ImmobilityDetector.Event.Alarm -> {
-                    preAlarmType = PreAlarmType.NONE
-                    alarmSound.startFullAlarm()
-                    try {
-                        val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
-                        withContext(Dispatchers.IO) {
-                            supabase.sendAlarm(operatorId, companyId, "IMMOBILITY", gps?.first, gps?.second)
-                            supabase.sendHeartbeat(operatorId, "alarm", 0, null, gps?.first, gps?.second)
-                            SmsAlertManager.sendAlertSms(context, "IMMOBILITA", operatorName, gps?.first, gps?.second)
+            try {
+                when (event) {
+                    is ImmobilityDetector.Event.PreAlarm -> {
+                        if (preAlarmType == PreAlarmType.NONE) {
+                            preAlarmType = PreAlarmType.IMMOBILITY
+                            preAlarmCountdown = 30
+                            alarmSound.startPreAlarm()
                         }
-                        appState = ScreenState.SOS_SENT
-                        sosMessage = "Allarme immobilità inviato!"
-                    } catch (_: Exception) {}
+                    }
+                    is ImmobilityDetector.Event.Alarm -> {
+                        preAlarmType = PreAlarmType.NONE
+                        fireAlarm("IMMOBILITY", "Allarme immobilità inviato!")
+                    }
+                    is ImmobilityDetector.Event.Cancelled -> {
+                        preAlarmType = PreAlarmType.NONE
+                        alarmSound.stop()
+                    }
                 }
-                is ImmobilityDetector.Event.Cancelled -> {
-                    preAlarmType = PreAlarmType.NONE
-                    alarmSound.stop()
-                }
+            } catch (e: Exception) {
+                Log.e("SoloSafe", "Immobility event error: ${e.message}")
             }
         }
     }
 
-    // Collect man-down detector events
+    // Collect malore detector events
     LaunchedEffect(Unit) {
         maloreDetector.events.collect { event ->
-            when (event) {
-                is MaloreDetector.Event.Calibrating -> Log.d("SoloSafe", "ManDown: calibrating...")
-                is MaloreDetector.Event.Ready -> Log.d("SoloSafe", "ManDown: ready")
-                is MaloreDetector.Event.PreAlarm -> {
-                    preAlarmType = PreAlarmType.MALORE
-                    preAlarmCountdown = 30
-                    alarmSound.startPreAlarm()
-                }
-                is MaloreDetector.Event.Alarm -> {
-                    preAlarmType = PreAlarmType.NONE
-                    alarmSound.startFullAlarm()
-                    try {
-                        val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
-                        withContext(Dispatchers.IO) {
-                            supabase.sendAlarm(operatorId, companyId, "MALORE", gps?.first, gps?.second)
-                            supabase.sendHeartbeat(operatorId, "alarm", 0, null, gps?.first, gps?.second)
-                            SmsAlertManager.sendAlertSms(context, "MALORE", operatorName, gps?.first, gps?.second)
+            try {
+                when (event) {
+                    is MaloreDetector.Event.Calibrating -> {}
+                    is MaloreDetector.Event.Ready -> {}
+                    is MaloreDetector.Event.PreAlarm -> {
+                        if (preAlarmType == PreAlarmType.NONE) {
+                            preAlarmType = PreAlarmType.MALORE
+                            preAlarmCountdown = 30
+                            alarmSound.startPreAlarm()
                         }
-                        appState = ScreenState.SOS_SENT
-                        sosMessage = "Allarme Malore inviato!"
-                    } catch (_: Exception) {}
+                    }
+                    is MaloreDetector.Event.Alarm -> {
+                        preAlarmType = PreAlarmType.NONE
+                        fireAlarm("MALORE", "Allarme Malore inviato!")
+                    }
+                    is MaloreDetector.Event.Cancelled -> {
+                        preAlarmType = PreAlarmType.NONE
+                        alarmSound.stop()
+                    }
                 }
-                is MaloreDetector.Event.Cancelled -> {
-                    preAlarmType = PreAlarmType.NONE
-                    alarmSound.stop()
-                }
+            } catch (e: Exception) {
+                Log.e("SoloSafe", "Malore event error: ${e.message}")
             }
         }
     }
@@ -199,17 +209,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                 }
                 is SessionExpiryManager.Event.Alarm -> {
                     preAlarmType = PreAlarmType.NONE
-                    alarmSound.startFullAlarm()
-                    try {
-                        val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
-                        withContext(Dispatchers.IO) {
-                            supabase.sendAlarm(operatorId, companyId, "SESSION_EXPIRED", gps?.first, gps?.second)
-                            supabase.sendHeartbeat(operatorId, "alarm", 0, null, gps?.first, gps?.second)
-                            SmsAlertManager.sendAlertSms(context, "SESSIONE SCADUTA", operatorName, gps?.first, gps?.second)
-                        }
-                        appState = ScreenState.SOS_SENT
-                        sosMessage = "Sessione scaduta — allarme inviato!"
-                    } catch (_: Exception) {}
+                    fireAlarm("SESSION_EXPIRED", "Sessione scaduta — allarme inviato!")
                 }
                 is SessionExpiryManager.Event.Extended -> {
                     showExpiryDialog = false
