@@ -126,14 +126,15 @@ fun FreeRegistrationScreen(
                     scope.launch {
                         try {
                             withContext(Dispatchers.IO) {
-                                val supabase = SupabaseClient()
-                                supabase.client.from("free_users").insert(buildJsonObject {
+                                val supa = SupabaseClient()
+                                val body = buildJsonObject {
                                     put("name", name.trim())
-                                    email.takeIf { it.isNotBlank() }?.let { put("email", it.trim()) }
-                                    phone.takeIf { it.isNotBlank() }?.let { put("phone", it.trim()) }
-                                    company.takeIf { it.isNotBlank() }?.let { put("company", it.trim()) }
+                                    if (email.isNotBlank()) put("email", email.trim())
+                                    if (phone.isNotBlank()) put("phone", phone.trim())
+                                    if (company.isNotBlank()) put("company", company.trim())
                                     put("device_model", "${Build.MANUFACTURER} ${Build.MODEL}")
-                                })
+                                }
+                                io.github.jan.supabase.postgrest.from(supa.client, "free_users").insert(body)
                             }
                             // Save free user state
                             context.getSharedPreferences(SoloSafeApp.PREFS_NAME, Context.MODE_PRIVATE).edit()
