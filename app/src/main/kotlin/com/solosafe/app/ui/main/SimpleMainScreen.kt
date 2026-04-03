@@ -305,14 +305,14 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                     }
                     SessionOption("Continua (H24)", "continua", 0) { type, _ ->
                         sessionType = type; sessionDurationHours = 0; showSessionDialog = false
-                        startSession(scope, context, supabase, heartbeat, operatorId, companyId, defaultPreset, type, null) {
-                            appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis()
+                        startSession(scope, context, supabase, heartbeat, operatorId, companyId, defaultPreset, type, null, onSuccess = { sid ->
+                            appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis(); currentSessionId = sid
                             prefs.edit().putString("current_state", "protected").commit()
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
                             heartbeat.startProtected()
                             HeartbeatManager.scheduleWorkManagerFallback(context, "protected")
                             fallDetector.start(); immobilityDetector.start(); maloreDetector.start()
-                            if (hours > 0) sessionExpiry.start(System.currentTimeMillis() + hours * 3600_000L)
+                            // Continua: no expiry
                         }, onSlotsFull = { slotError = true })
                     }
                 }
