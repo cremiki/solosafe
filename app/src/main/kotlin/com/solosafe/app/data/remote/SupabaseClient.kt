@@ -63,24 +63,25 @@ class SupabaseClient @Inject constructor() {
             put("operator_id", operatorId)
             put("company_id", companyId)
             put("session_type", sessionType)
-            put("preset", preset)
-            put("status", "active")
+            put("preset_used", preset)
             plannedEnd?.let { put("planned_end", it) }
         }) {
             select()
         }.decodeSingle<SessionResponse>()
+        Log.d("SoloSafe", "Work session INSERT OK: id=${result.id}")
         result.id
     }
 
     suspend fun endSession(sessionId: String) = withContext(Dispatchers.IO) {
         client.from("work_sessions").update(buildJsonObject {
             put("status", "completed")
-            put("ended_at", java.time.Instant.now().toString())
+            put("actual_end", java.time.Instant.now().toString())
         }) {
             filter {
                 eq("id", sessionId)
             }
         }
+        Log.d("SoloSafe", "Work session ended: $sessionId")
     }
 
     suspend fun sendAlarm(

@@ -56,6 +56,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
     var sessionStart by remember { mutableStateOf<Long?>(null) }
     var sessionDurationHours by remember { mutableIntStateOf(0) }
     var sessionType by remember { mutableStateOf("") }
+    var currentSessionId by remember { mutableStateOf<String?>(null) }
     var showSessionDialog by remember { mutableStateOf(false) }
     var sosMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
@@ -225,8 +226,8 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SessionOption("Turno 8 ore", "turno", 8) { type, hours ->
                         sessionType = type; sessionDurationHours = hours; showSessionDialog = false
-                        startSession(scope, context, supabase, heartbeat, operatorId, companyId, defaultPreset, type, hours) {
-                            appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis()
+                        startSession(scope, context, supabase, heartbeat, operatorId, companyId, defaultPreset, type, hours) { sid ->
+                            appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis(); currentSessionId = sid
                             prefs.edit().putString("current_state", "protected").commit()
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
                             heartbeat.startProtected()
@@ -236,8 +237,8 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                     }
                     SessionOption("Turno 4 ore", "turno", 4) { type, hours ->
                         sessionType = type; sessionDurationHours = hours; showSessionDialog = false
-                        startSession(scope, context, supabase, heartbeat, operatorId, companyId, defaultPreset, type, hours) {
-                            appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis()
+                        startSession(scope, context, supabase, heartbeat, operatorId, companyId, defaultPreset, type, hours) { sid ->
+                            appState = ScreenState.PROTECTED; sessionStart = System.currentTimeMillis(); currentSessionId = sid
                             prefs.edit().putString("current_state", "protected").commit()
                             try { SoloSafeService.startProtected(context, defaultPreset) } catch (_: Exception) {}
                             heartbeat.startProtected()
@@ -467,12 +468,14 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                             prefs.edit().putString("current_state", "standby").commit()
                             scope.launch {
                                 try {
+                                    currentSessionId?.let { supabase.endSession(it) }
                                     supabase.sendHeartbeat(operatorId, "standby", 100, null, null, null)
-                                    Log.d("SoloSafe", "Status set to standby")
+                                    Log.d("SoloSafe", "Session ended + status set to standby")
                                 } catch (e: Exception) {
                                     Log.e("SoloSafe", "End session error: ${e.message}")
                                 }
                             }
+                            currentSessionId = null
                             fallDetector.stop(); immobilityDetector.stop(); maloreDetector.stop()
                             heartbeat.startStandby()
                             try { SoloSafeService.startStandby(context) } catch (_: Exception) {}
@@ -579,30 +582,26 @@ private fun startSession(
     preset: String,
     sessionType: String,
     durationHours: Int?,
-    onSuccess: () -> Unit,
+    onSuccess: (sessionId: String?) -> Unit,
 ) {
     scope.launch {
+        var sessionId: String? = null
         try {
             withContext(Dispatchers.IO) {
                 val plannedEnd = durationHours?.let {
                     java.time.Instant.now().plusSeconds(it.toLong() * 3600).toString()
                 }
-
-                // Insert work_session in Supabase
-                val sessionId = supabase.startSession(operatorId, companyId, sessionType, preset, plannedEnd)
-                Log.d("SoloSafe", "Work session created: id=$sessionId")
-
-                // Get real GPS + battery and update operator_status
+                sessionId = supabase.startSession(operatorId, companyId, sessionType, preset, plannedEnd)
                 val gps = heartbeat.getLastLocation()
                 val battery = (context.getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager)
                     .getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
                 supabase.sendHeartbeat(operatorId, "protected", battery, null, gps?.first, gps?.second)
             }
-            Log.d("SoloSafe", "Session started: type=$sessionType, duration=$durationHours")
-            onSuccess()
+            Log.d("SoloSafe", "Session started: id=$sessionId type=$sessionType")
+            onSuccess(sessionId)
         } catch (e: Exception) {
             Log.e("SoloSafe", "Start session failed: ${e.message}")
-            onSuccess()
+            onSuccess(null)
         }
     }
 }
