@@ -43,6 +43,7 @@ fun PermissionScreen(onAllGranted: () -> Unit) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
                 add(PermissionItem(Manifest.permission.POST_NOTIFICATIONS, Icons.Default.Notifications, "Notifiche", "Per gli allarmi e lo stato protezione", required = true))
             add(PermissionItem(Manifest.permission.SEND_SMS, Icons.Default.Sms, "Invio SMS", "Per inviare SMS di emergenza ai contatti", required = false))
+            add(PermissionItem(Manifest.permission.CALL_PHONE, Icons.Default.Phone, "Chiamate", "Per chiamare automaticamente i contatti in caso di emergenza", required = false))
             add(PermissionItem(Manifest.permission.CAMERA, Icons.Default.CameraAlt, "Fotocamera", "Per scansionare il QR di configurazione", required = false))
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
                 add(PermissionItem(Manifest.permission.ACTIVITY_RECOGNITION, Icons.Default.DirectionsRun, "Riconoscimento attività", "Per rilevare cadute e immobilità", required = false))
