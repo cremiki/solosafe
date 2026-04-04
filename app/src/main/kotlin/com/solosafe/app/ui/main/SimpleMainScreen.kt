@@ -98,11 +98,27 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
             try {
                 val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
                 withContext(Dispatchers.IO) {
-                    supabase.sendAlarm(operatorId, companyId, type, gps?.first, gps?.second)
+                    val alarmId = supabase.sendAlarm(operatorId, companyId, type, gps?.first, gps?.second)
                     supabase.sendHeartbeat(operatorId, "alarm", 0, null, gps?.first, gps?.second)
+
+                    // Log alarm triggered
+                    supabase.logAlarmEvent(alarmId, operatorId, "ALARM_TRIGGERED", type)
+
                     if (FeatureManager.canSendExternalNotification(context, type)) {
                         SmsAlertManager.sendAlertSms(context, type, operatorName, gps?.first, gps?.second)
-                        supabase.notifyAlarmService(operatorId, operatorName, type, gps?.first, gps?.second)
+
+                        // Start GSM call cascade for PRO users
+                        if (FeatureManager.isPro(context)) {
+                            val authNumbers = context.getSharedPreferences(com.solosafe.app.SoloSafeApp.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                                .getString("authorized_numbers", "")?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+                            val contacts = authNumbers.mapIndexed { i, phone ->
+                                com.solosafe.app.service.CallCascadeManager.Contact(name = "Contatto ${i+1}", phone = phone, position = i+1)
+                            }
+                            val cascade = com.solosafe.app.service.CallCascadeManager(context, supabase)
+                            cascade.startCascade(alarmId, operatorId, operatorName, type, contacts, gps?.first, gps?.second)
+                        } else {
+                            supabase.notifyAlarmService(operatorId, operatorName, type, gps?.first, gps?.second)
+                        }
                     }
                 }
                 Log.d("SoloSafe", "Alarm sent: $type")
@@ -228,6 +244,8 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
     LaunchedEffect(preAlarmType) {
         if (preAlarmType != PreAlarmType.NONE) {
             val alarmType = preAlarmType
+            // Log pre-alarm shown
+            supabase.logAlarmEvent(null, operatorId, "PRE_ALARM_SHOWN", alarmType.name)
             try {
                 preAlarmCountdown = 30
                 while (preAlarmCountdown > 0) {
@@ -516,6 +534,7 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                 // BIG green button — takes half the screen
                 Button(
                     onClick = {
+                        supabase.logAlarmEvent(null, operatorId, "PRE_ALARM_CANCELLED", preAlarmType.name)
                         fallDetector.cancelAlarm()
                         immobilityDetector.cancelAlarm()
                         maloreDetector.cancelAlarm()

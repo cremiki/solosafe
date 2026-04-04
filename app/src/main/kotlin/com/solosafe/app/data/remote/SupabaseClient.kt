@@ -119,6 +119,32 @@ class SupabaseClient @Inject constructor() {
         result.id
     }
 
+    /** Log alarm event detail (fire-and-forget) */
+    fun logAlarmEvent(
+        alarmEventId: String?, operatorId: String, eventType: String, alarmType: String,
+        recipientName: String? = null, recipientPhone: String? = null,
+        channel: String? = null, responseBy: String? = null, notes: String? = null,
+    ) {
+        @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                client.from("alarm_event_log").insert(buildJsonObject {
+                    alarmEventId?.let { put("alarm_event_id", it) }
+                    put("operator_id", operatorId)
+                    put("event_type", eventType)
+                    put("alarm_type", alarmType)
+                    recipientName?.let { put("recipient_name", it) }
+                    recipientPhone?.let { put("recipient_phone", it) }
+                    channel?.let { put("channel", it) }
+                    responseBy?.let { put("response_by", it) }
+                    notes?.let { put("notes", it) }
+                })
+            } catch (e: Exception) {
+                Log.w("SoloSafe", "logAlarmEvent failed: ${e.message}")
+            }
+        }
+    }
+
     /** Notify alarm service for call cascade (fire-and-forget) */
     fun notifyAlarmService(operatorId: String, operatorName: String, type: String, lat: Double?, lng: Double?) {
         @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
