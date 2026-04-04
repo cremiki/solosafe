@@ -95,36 +95,33 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
         appState = ScreenState.SOS_SENT
         sosMessage = message
         scope.launch {
+            var alarmId: String? = null
+            var gps: Pair<Double, Double>? = null
+
+            // CRITICAL: send alarm + heartbeat + SMS (must not fail silently)
             try {
-                val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
-                withContext(Dispatchers.IO) {
-                    val alarmId = supabase.sendAlarm(operatorId, companyId, type, gps?.first, gps?.second)
-                    supabase.sendHeartbeat(operatorId, "alarm", 0, null, gps?.first, gps?.second)
-
-                    // Log alarm triggered
-                    supabase.logAlarmEvent(alarmId, operatorId, "ALARM_TRIGGERED", type)
-
-                    if (FeatureManager.canSendExternalNotification(context, type)) {
-                        SmsAlertManager.sendAlertSms(context, type, operatorName, gps?.first, gps?.second)
-
-                        // Start GSM call cascade for PRO users
-                        if (FeatureManager.isPro(context)) {
-                            val authNumbers = context.getSharedPreferences(com.solosafe.app.SoloSafeApp.PREFS_NAME, android.content.Context.MODE_PRIVATE)
-                                .getString("authorized_numbers", "")?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
-                            val contacts = authNumbers.mapIndexed { i, phone ->
-                                com.solosafe.app.service.CallCascadeManager.Contact(name = "Contatto ${i+1}", phone = phone, position = i+1)
-                            }
-                            val cascade = com.solosafe.app.service.CallCascadeManager(context, supabase)
-                            cascade.startCascade(alarmId, operatorId, operatorName, type, contacts, gps?.first, gps?.second)
-                        } else {
-                            supabase.notifyAlarmService(operatorId, operatorName, type, gps?.first, gps?.second)
-                        }
-                    }
-                }
-                Log.d("SoloSafe", "Alarm sent: $type")
+                gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
+                alarmId = withContext(Dispatchers.IO) { supabase.sendAlarm(operatorId, companyId, type, gps?.first, gps?.second) }
+                withContext(Dispatchers.IO) { supabase.sendHeartbeat(operatorId, "alarm", 0, null, gps?.first, gps?.second) }
+                Log.d("SoloSafe", "Alarm INSERT OK: $alarmId")
             } catch (e: Exception) {
-                Log.e("SoloSafe", "Alarm send failed: ${e.message}")
+                Log.e("SoloSafe", "Alarm INSERT failed: ${e.message}")
             }
+
+            // SMS (independent, don't block other actions)
+            try {
+                if (FeatureManager.canSendExternalNotification(context, type)) {
+                    withContext(Dispatchers.IO) { SmsAlertManager.sendAlertSms(context, type, operatorName, gps?.first, gps?.second) }
+                }
+            } catch (e: Exception) { Log.e("SoloSafe", "SMS failed: ${e.message}") }
+
+            // NON-CRITICAL: logging + cascade (fire-and-forget)
+            try {
+                supabase.logAlarmEvent(alarmId, operatorId, "ALARM_TRIGGERED", type)
+                supabase.notifyAlarmService(operatorId, operatorName, type, gps?.first, gps?.second)
+            } catch (_: Exception) {}
+
+            Log.d("SoloSafe", "Alarm pipeline complete: $type")
         }
     }
 
