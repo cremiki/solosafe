@@ -115,9 +115,23 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                 }
             } catch (e: Exception) { Log.e("SoloSafe", "SMS failed: ${e.message}") }
 
-            // NON-CRITICAL: logging + cascade (fire-and-forget)
+            // NON-CRITICAL: logging (fire-and-forget)
+            try { supabase.logAlarmEvent(alarmId, operatorId, "ALARM_TRIGGERED", type) } catch (_: Exception) {}
+
+            // CALL CASCADE: GSM calls to emergency contacts
             try {
-                supabase.logAlarmEvent(alarmId, operatorId, "ALARM_TRIGGERED", type)
+                if (FeatureManager.isPro(context)) {
+                    val authNumbers = context.getSharedPreferences(com.solosafe.app.SoloSafeApp.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                        .getString("authorized_numbers", "")?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+                    if (authNumbers.isNotEmpty()) {
+                        val contacts = authNumbers.mapIndexed { i, phone ->
+                            com.solosafe.app.service.CallCascadeManager.Contact(name = "Contatto ${i+1}", phone = phone, position = i+1)
+                        }
+                        val cascade = com.solosafe.app.service.CallCascadeManager(context, supabase)
+                        cascade.startCascade(alarmId, operatorId, operatorName, type, contacts, gps?.first, gps?.second)
+                    }
+                }
+                // Always notify alarm service (for Telegram)
                 supabase.notifyAlarmService(operatorId, operatorName, type, gps?.first, gps?.second)
             } catch (_: Exception) {}
 
@@ -730,27 +744,8 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                 onClick = {
                     if (isLoading) return@Button
                     isLoading = true
-                    sosMessage = null
-                    alarmSound.startFullAlarm()
-                    scope.launch {
-                        try {
-                            val gps = withContext(Dispatchers.IO) { heartbeat.getLastLocation() }
-                            withContext(Dispatchers.IO) {
-                                supabase.sendAlarm(operatorId, companyId, "SOS", gps?.first, gps?.second)
-                                supabase.sendHeartbeat(operatorId, "alarm", 0, null, gps?.first, gps?.second)
-                                SmsAlertManager.sendAlertSms(context, "SOS", operatorName, gps?.first, gps?.second)
-                                supabase.notifyAlarmService(operatorId, operatorName, "SOS", gps?.first, gps?.second)
-                            }
-                            appState = ScreenState.SOS_SENT
-                            sosMessage = "✓ Allarme inviato!"
-                            Log.d("SoloSafe", "SOS alarm sent successfully")
-                        } catch (e: Exception) {
-                            sosMessage = "Errore: ${e.message}"
-                            Log.e("SoloSafe", "SOS failed: ${e.message}")
-                        } finally {
-                            isLoading = false
-                        }
-                    }
+                    fireAlarm("SOS", "✓ Allarme SOS inviato!")
+                    isLoading = false
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Alarm),
                 shape = CircleShape,
