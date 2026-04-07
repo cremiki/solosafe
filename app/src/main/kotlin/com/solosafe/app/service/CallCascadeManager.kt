@@ -50,45 +50,83 @@ class CallCascadeManager(
             return
         }
 
+        // Read tunables from prefs (set by dashboard sync or defaults)
+        val prefs = context.getSharedPreferences(com.solosafe.app.SoloSafeApp.PREFS_NAME, Context.MODE_PRIVATE)
+        val maxRounds = prefs.getInt("cascade_max_rounds", 2).coerceAtLeast(1)
+
         scope.launch {
             // Wait 10s after alarm before starting cascade (let SMS/Telegram fire first)
-            Log.d("SoloSafe", "CallCascade: waiting 10s before first call")
+            Log.d("SoloSafe", "CallCascade: waiting 10s before first call (rounds=$maxRounds)")
             delay(10_000L)
 
-            for (contact in contacts) {
-                Log.d("SoloSafe", "CallCascade: calling #${contact.position} ${contact.name} (${contact.phone})")
-                logEvent(alarmEventId, operatorId, "CALL_INITIATED", alarmType,
-                    recipientName = contact.name, recipientPhone = contact.phone, channel = "gsm")
+            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+            var answered = false
 
-                // Place call. Try direct startActivity first; if app is in background
-                // (e.g. after first call ended), Android blocks it — fall back to a
-                // full-screen-intent notification which bypasses the restriction.
-                try {
-                    placeCall(contact.phone, contact.name)
-                } catch (e: Exception) {
-                    Log.e("SoloSafe", "CallCascade: call failed: ${e.message}")
-                    logEvent(alarmEventId, operatorId, "CALL_FAILED", alarmType,
-                        recipientName = contact.name, recipientPhone = contact.phone,
-                        channel = "gsm", notes = e.message)
-                    continue
+            roundLoop@ for (round in 1..maxRounds) {
+                Log.d("SoloSafe", "CallCascade: ===== round $round/$maxRounds =====")
+
+                for (contact in contacts) {
+                    Log.d("SoloSafe", "CallCascade: calling #${contact.position} ${contact.name} (${contact.phone})")
+                    logEvent(alarmEventId, operatorId, "CALL_INITIATED", alarmType,
+                        recipientName = contact.name, recipientPhone = contact.phone, channel = "gsm")
+
+                    try {
+                        placeCall(contact.phone, contact.name)
+                    } catch (e: Exception) {
+                        Log.e("SoloSafe", "CallCascade: call failed: ${e.message}")
+                        logEvent(alarmEventId, operatorId, "CALL_FAILED", alarmType,
+                            recipientName = contact.name, recipientPhone = contact.phone,
+                            channel = "gsm", notes = e.message)
+                        continue
+                    }
+
+                    // Warmup: 4s to let the call register as OFFHOOK
+                    delay(4_000L)
+
+                    // Poll up to 18 more seconds (22s total). If state goes back to IDLE
+                    // before our timeout, the recipient rejected/missed → move on fast.
+                    // If still OFFHOOK at 22s, assume the call was answered.
+                    var endedByPeer = false
+                    var i = 0
+                    while (i < 18) {
+                        @Suppress("DEPRECATION")
+                        if (tm.callState == TelephonyManager.CALL_STATE_IDLE) {
+                            endedByPeer = true
+                            Log.d("SoloSafe", "CallCascade: state IDLE at ${4 + i}s — recipient ended")
+                            break
+                        }
+                        delay(1_000L)
+                        i++
+                    }
+
+                    if (!endedByPeer) {
+                        // Still in call after 22s → assume answered. Stop cascade.
+                        Log.d("SoloSafe", "CallCascade: still active at 22s — assuming ANSWERED by ${contact.name}")
+                        logEvent(alarmEventId, operatorId, "CALL_ANSWERED", alarmType,
+                            recipientName = contact.name, recipientPhone = contact.phone,
+                            channel = "gsm", responseBy = contact.name)
+                        // Let the conversation continue naturally; do NOT hang up.
+                        answered = true
+                        break@roundLoop
+                    }
+
+                    // Not answered → ensure call is closed and move on quickly
+                    forceEndCall()
+                    delay(1_000L)
+                    logEvent(alarmEventId, operatorId, "CALL_NO_ANSWER", alarmType,
+                        recipientName = contact.name, recipientPhone = contact.phone, channel = "gsm")
                 }
 
-                // Fixed 25s timeout. Outgoing calls report OFFHOOK while ringing,
-                // so we can't reliably distinguish "answered" — just give it 25s then hang up.
-                Log.d("SoloSafe", "CallCascade: ringing ${contact.name} for 25s")
-                delay(25_000L)
-
-                // Force hangup with multiple strategies
-                Log.d("SoloSafe", "CallCascade: hanging up ${contact.name}")
-                forceEndCall()
-                delay(3_000L) // grace period for system to release call
-
-                logEvent(alarmEventId, operatorId, "CALL_NO_ANSWER", alarmType,
-                    recipientName = contact.name, recipientPhone = contact.phone, channel = "gsm")
+                if (round < maxRounds) {
+                    Log.d("SoloSafe", "CallCascade: round $round complete, no answer — pause 5s before next round")
+                    delay(5_000L)
+                }
             }
 
-            Log.d("SoloSafe", "CallCascade: all contacts called, triggering Twilio fallback")
-            triggerTwilioFallback(operatorId, operatorName, alarmType, lat, lng, alarmEventId)
+            if (!answered) {
+                Log.d("SoloSafe", "CallCascade: all rounds exhausted, triggering Twilio fallback")
+                triggerTwilioFallback(operatorId, operatorName, alarmType, lat, lng, alarmEventId)
+            }
         }
     }
 
