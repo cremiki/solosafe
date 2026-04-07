@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.SoloSafe" parent="android:Theme.Material.NoActionBar">
-        <item name="android:statusBarColor">#0F1117</item>
+        <item name="android:statusBarColor">@color/solosafe_red</item>
         <item name="android:navigationBarColor">#0F1117</item>
-        <item name="android:windowBackground">#0F1117</item>
+        <item name="android:windowBackground">@drawable/splash_background</item>
     </style>
 </resources>

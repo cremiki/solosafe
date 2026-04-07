@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="colorPrimary">#E63946</color>
+    <color name="solosafe_red">#E63946</color>
     <color name="colorBackground">#0F1117</color>
     <color name="colorSurface">#1A1D27</color>
     <color name="colorProtected">#2ECC71</color>
