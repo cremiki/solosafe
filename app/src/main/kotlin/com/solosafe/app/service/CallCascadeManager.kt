@@ -84,25 +84,26 @@ class CallCascadeManager(
                     continue
                 }
 
-                // Poll call state for up to 25s with 1s intervals
-                // OFFHOOK sustained > 5s = answered. Otherwise: hang up and continue.
-                var offhookSeconds = 0
-                var totalSeconds = 0
+                // Wait 5s for call to start
+                delay(5_000L)
+
+                // Monitor for max 25s. OFFHOOK = answered. IDLE after >8s = no answer.
                 var detectedAnswer = false
-                while (totalSeconds < 25) {
-                    delay(1000)
-                    totalSeconds++
+                val startTime = System.currentTimeMillis()
+                while (System.currentTimeMillis() - startTime < 25_000L) {
                     @Suppress("DEPRECATION")
                     val state = tm.callState
                     if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
-                        offhookSeconds++
-                        if (offhookSeconds >= 5) {
-                            detectedAnswer = true
-                            break
-                        }
-                    } else {
-                        offhookSeconds = 0
+                        delay(2_000L)
+                        detectedAnswer = true
+                        break
                     }
+                    if (state == TelephonyManager.CALL_STATE_IDLE &&
+                        System.currentTimeMillis() - startTime > 8_000L) {
+                        // Returned to IDLE after at least 8s = call ended without answer
+                        break
+                    }
+                    delay(1_000L)
                 }
 
                 if (detectedAnswer) {
@@ -115,19 +116,10 @@ class CallCascadeManager(
                     Log.d("SoloSafe", "CallCascade: NO ANSWER from ${contact.name}, ending call")
                     logEvent(alarmEventId, operatorId, "CALL_NO_ANSWER", alarmType,
                         recipientName = contact.name, recipientPhone = contact.phone, channel = "gsm")
-                    // Try to hang up the ongoing call (requires ANSWER_PHONE_CALLS on API 28+)
-                    try {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && telecom != null) {
-                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.ANSWER_PHONE_CALLS)
-                                == PackageManager.PERMISSION_GRANTED) {
-                                telecom.endCall()
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.w("SoloSafe", "CallCascade: endCall failed: ${e.message}")
-                    }
-                    // Small grace period before next call
-                    delay(2000)
+                    // Best-effort hangup
+                    try { telecom?.endCall() } catch (_: Exception) {}
+                    // Pause before next contact
+                    delay(3_000L)
                 }
             }
 
