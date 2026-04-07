@@ -1,20 +1,13 @@
 package com.solosafe.app.service
 
 import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.telecom.TelecomManager
 import android.telephony.TelephonyManager
 import android.util.Log
-import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.solosafe.app.data.remote.SupabaseClient
 import kotlinx.coroutines.*
@@ -100,51 +93,21 @@ class CallCascadeManager(
     }
 
     /**
-     * Places a GSM call. Direct startActivity is blocked when the app is in
-     * background, so we use a notification with full-screen intent which is
-     * always allowed and immediately fires the call activity.
+     * Places a GSM call by delegating to the foreground SoloSafeService, which
+     * is allowed to start activities from background (a normal Context is not
+     * on Android 10+).
      */
     private fun placeCall(phone: String, name: String) {
-        val callIntent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$phone")).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        val svcIntent = Intent(context, SoloSafeService::class.java).apply {
+            action = SoloSafeService.ACTION_PLACE_CALL
+            putExtra(SoloSafeService.EXTRA_PHONE, phone)
         }
-
-        // Ensure channel exists (high importance for full-screen)
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(
-                CALL_CHANNEL_ID,
-                "SoloSafe Cascata Chiamate",
-                NotificationManager.IMPORTANCE_HIGH,
-            ).apply {
-                description = "Notifiche di avvio chiamate cascata di emergenza"
-                setSound(null, null)
-                enableVibration(false)
-            }
-            nm.createNotificationChannel(ch)
+            context.startForegroundService(svcIntent)
+        } else {
+            context.startService(svcIntent)
         }
-
-        val pi = PendingIntent.getActivity(
-            context,
-            phone.hashCode(),
-            callIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-
-        val notification = NotificationCompat.Builder(context, CALL_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.sym_call_outgoing)
-            .setContentTitle("SoloSafe — chiamata di emergenza")
-            .setContentText("Chiamando $name…")
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_CALL)
-            .setFullScreenIntent(pi, true)
-            .setContentIntent(pi)
-            .setAutoCancel(true)
-            .setOngoing(false)
-            .build()
-
-        nm.notify(CALL_NOTIF_ID, notification)
-        Log.d("SoloSafe", "CallCascade: posted full-screen-intent notification for $name")
+        Log.d("SoloSafe", "CallCascade: delegated call to SoloSafeService for $name ($phone)")
     }
 
     /** Force-end the current call using multiple fallback strategies. */
@@ -199,8 +162,4 @@ class CallCascadeManager(
         scope.cancel()
     }
 
-    companion object {
-        private const val CALL_CHANNEL_ID = "solosafe_call_cascade"
-        private const val CALL_NOTIF_ID = 7711
-    }
 }

@@ -4,6 +4,7 @@ import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -30,6 +31,7 @@ class SoloSafeService : Service() {
             )
             ACTION_STOP -> stopSelf()
             ACTION_SOS -> triggerSos()
+            ACTION_PLACE_CALL -> placeCall(intent.getStringExtra(EXTRA_PHONE) ?: return START_STICKY)
         }
         return START_STICKY
     }
@@ -120,6 +122,18 @@ class SoloSafeService : Service() {
         return builder.build()
     }
 
+    private fun placeCall(phone: String) {
+        try {
+            val callIntent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$phone")).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(callIntent)
+            android.util.Log.d("SoloSafe", "SoloSafeService: placeCall started for $phone")
+        } catch (e: Exception) {
+            android.util.Log.e("SoloSafe", "SoloSafeService: placeCall failed: ${e.message}")
+        }
+    }
+
     private fun acquireWakeLock() {
         if (wakeLock == null) {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -142,8 +156,10 @@ class SoloSafeService : Service() {
         const val ACTION_START_PROTECTED = "com.solosafe.START_PROTECTED"
         const val ACTION_STOP = "com.solosafe.STOP"
         const val ACTION_SOS = "com.solosafe.SOS"
+        const val ACTION_PLACE_CALL = "com.solosafe.PLACE_CALL"
         const val EXTRA_PRESET = "preset"
         const val EXTRA_SESSION_END = "session_end"
+        const val EXTRA_PHONE = "phone"
 
         fun startStandby(context: Context) {
             val intent = Intent(context, SoloSafeService::class.java).apply { action = ACTION_START_STANDBY }
