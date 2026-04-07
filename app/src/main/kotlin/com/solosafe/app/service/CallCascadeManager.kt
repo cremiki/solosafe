@@ -1,6 +1,9 @@
 package com.solosafe.app.service
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -11,6 +14,7 @@ import android.os.Looper
 import android.telecom.TelecomManager
 import android.telephony.TelephonyManager
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.solosafe.app.data.remote.SupabaseClient
 import kotlinx.coroutines.*
@@ -63,13 +67,11 @@ class CallCascadeManager(
                 logEvent(alarmEventId, operatorId, "CALL_INITIATED", alarmType,
                     recipientName = contact.name, recipientPhone = contact.phone, channel = "gsm")
 
-                // Start GSM call
+                // Place call. Try direct startActivity first; if app is in background
+                // (e.g. after first call ended), Android blocks it — fall back to a
+                // full-screen-intent notification which bypasses the restriction.
                 try {
-                    val callIntent = Intent(Intent.ACTION_CALL).apply {
-                        data = Uri.parse("tel:${contact.phone}")
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    context.startActivity(callIntent)
+                    placeCall(contact.phone, contact.name)
                 } catch (e: Exception) {
                     Log.e("SoloSafe", "CallCascade: call failed: ${e.message}")
                     logEvent(alarmEventId, operatorId, "CALL_FAILED", alarmType,
@@ -95,6 +97,54 @@ class CallCascadeManager(
             Log.d("SoloSafe", "CallCascade: all contacts called, triggering Twilio fallback")
             triggerTwilioFallback(operatorId, operatorName, alarmType, lat, lng, alarmEventId)
         }
+    }
+
+    /**
+     * Places a GSM call. Direct startActivity is blocked when the app is in
+     * background, so we use a notification with full-screen intent which is
+     * always allowed and immediately fires the call activity.
+     */
+    private fun placeCall(phone: String, name: String) {
+        val callIntent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$phone")).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+
+        // Ensure channel exists (high importance for full-screen)
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val ch = NotificationChannel(
+                CALL_CHANNEL_ID,
+                "SoloSafe Cascata Chiamate",
+                NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                description = "Notifiche di avvio chiamate cascata di emergenza"
+                setSound(null, null)
+                enableVibration(false)
+            }
+            nm.createNotificationChannel(ch)
+        }
+
+        val pi = PendingIntent.getActivity(
+            context,
+            phone.hashCode(),
+            callIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        val notification = NotificationCompat.Builder(context, CALL_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.sym_call_outgoing)
+            .setContentTitle("SoloSafe — chiamata di emergenza")
+            .setContentText("Chiamando $name…")
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setFullScreenIntent(pi, true)
+            .setContentIntent(pi)
+            .setAutoCancel(true)
+            .setOngoing(false)
+            .build()
+
+        nm.notify(CALL_NOTIF_ID, notification)
+        Log.d("SoloSafe", "CallCascade: posted full-screen-intent notification for $name")
     }
 
     /** Force-end the current call using multiple fallback strategies. */
@@ -147,5 +197,10 @@ class CallCascadeManager(
 
     fun destroy() {
         scope.cancel()
+    }
+
+    companion object {
+        private const val CALL_CHANNEL_ID = "solosafe_call_cascade"
+        private const val CALL_NOTIF_ID = 7711
     }
 }

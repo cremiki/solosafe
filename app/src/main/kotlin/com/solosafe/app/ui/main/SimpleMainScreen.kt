@@ -129,6 +129,12 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                         }
                         val cascade = com.solosafe.app.service.CallCascadeManager(context, supabase)
                         cascade.startCascade(alarmId, operatorId, operatorName, type, contacts, gps?.first, gps?.second)
+                        // Stop alarm beep just before first call so it doesn't
+                        // overlap with the conversation
+                        scope.launch {
+                            kotlinx.coroutines.delay(9_500L)
+                            alarmSound.stop()
+                        }
                     }
                 }
                 // Always notify alarm service (for Telegram)
