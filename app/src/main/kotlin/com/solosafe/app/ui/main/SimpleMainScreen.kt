@@ -146,6 +146,13 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
     }
 
     // Collect fall detector events (only PreAlarm — alarm sent by countdown)
+    // Sync tunables (cascade settings, battery threshold) from Supabase at startup
+    LaunchedEffect(Unit) {
+        if (operatorId.isNotBlank()) {
+            try { supabase.syncOperatorTunables(context, operatorId) } catch (_: Exception) {}
+        }
+    }
+
     LaunchedEffect(Unit) {
         fallDetector.events.collect { event ->
             try {

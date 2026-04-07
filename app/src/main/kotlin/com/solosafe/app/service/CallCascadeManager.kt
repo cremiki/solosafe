@@ -50,14 +50,15 @@ class CallCascadeManager(
             return
         }
 
-        // Read tunables from prefs (set by dashboard sync or defaults)
+        // Read tunables from prefs (synced from dashboard via syncOperatorTunables)
         val prefs = context.getSharedPreferences(com.solosafe.app.SoloSafeApp.PREFS_NAME, Context.MODE_PRIVATE)
         val maxRounds = prefs.getInt("cascade_max_rounds", 2).coerceAtLeast(1)
+        val timeoutSec = prefs.getInt("cascade_timeout_seconds", 25).coerceIn(10, 60)
+        val delaySec = prefs.getInt("cascade_delay_seconds", 10).coerceIn(0, 30)
 
         scope.launch {
-            // Wait 10s after alarm before starting cascade (let SMS/Telegram fire first)
-            Log.d("SoloSafe", "CallCascade: waiting 10s before first call (rounds=$maxRounds)")
-            delay(10_000L)
+            Log.d("SoloSafe", "CallCascade: waiting ${delaySec}s before first call (rounds=$maxRounds, timeout=${timeoutSec}s)")
+            delay(delaySec * 1000L)
 
             val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
             var answered = false
@@ -83,12 +84,12 @@ class CallCascadeManager(
                     // Warmup: 4s to let the call register as OFFHOOK
                     delay(4_000L)
 
-                    // Poll up to 18 more seconds (22s total). If state goes back to IDLE
-                    // before our timeout, the recipient rejected/missed → move on fast.
-                    // If still OFFHOOK at 22s, assume the call was answered.
+                    // Poll for (timeoutSec - 4)s. If state IDLE → rejected/missed.
+                    // If still active at the timeout, assume the call was answered.
+                    val pollSeconds = (timeoutSec - 4).coerceAtLeast(5)
                     var endedByPeer = false
                     var i = 0
-                    while (i < 18) {
+                    while (i < pollSeconds) {
                         @Suppress("DEPRECATION")
                         if (tm.callState == TelephonyManager.CALL_STATE_IDLE) {
                             endedByPeer = true
@@ -100,8 +101,8 @@ class CallCascadeManager(
                     }
 
                     if (!endedByPeer) {
-                        // Still in call after 22s → assume answered. Stop cascade.
-                        Log.d("SoloSafe", "CallCascade: still active at 22s — assuming ANSWERED by ${contact.name}")
+                        // Still in call after timeout → assume answered. Stop cascade.
+                        Log.d("SoloSafe", "CallCascade: still active at ${timeoutSec}s — assuming ANSWERED by ${contact.name}")
                         logEvent(alarmEventId, operatorId, "CALL_ANSWERED", alarmType,
                             recipientName = contact.name, recipientPhone = contact.phone,
                             channel = "gsm", responseBy = contact.name)

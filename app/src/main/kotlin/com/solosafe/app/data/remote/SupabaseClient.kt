@@ -180,6 +180,30 @@ class SupabaseClient @Inject constructor() {
         Log.d("SoloSafe", "Free user registered: $name")
     }
 
+    /**
+     * Fetch operator tunables (cascade settings, thresholds) by id and persist
+     * them to SharedPreferences so CallCascadeManager and other runtime code
+     * can read them without going through Room/DI.
+     */
+    suspend fun syncOperatorTunables(context: android.content.Context, operatorId: String) = withContext(Dispatchers.IO) {
+        try {
+            val cfg = client.from("operators")
+                .select { filter { eq("id", operatorId) } }
+                .decodeSingleOrNull<OperatorConfig>() ?: return@withContext
+            val prefs = context.getSharedPreferences(com.solosafe.app.SoloSafeApp.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+            prefs.edit()
+                .putInt("cascade_max_rounds", cfg.cascade_max_rounds)
+                .putInt("cascade_timeout_seconds", cfg.cascade_timeout_seconds)
+                .putInt("cascade_delay_seconds", cfg.cascade_delay_seconds)
+                .putInt("battery_alert_threshold", cfg.battery_alert_threshold)
+                .putInt("default_session_hours", cfg.default_session_hours)
+                .apply()
+            android.util.Log.d("SoloSafe", "Tunables synced: rounds=${cfg.cascade_max_rounds} timeout=${cfg.cascade_timeout_seconds}s delay=${cfg.cascade_delay_seconds}s")
+        } catch (e: Exception) {
+            android.util.Log.w("SoloSafe", "syncOperatorTunables failed: ${e.message}")
+        }
+    }
+
     suspend fun getOperatorConfig(configToken: String): OperatorConfig? = withContext(Dispatchers.IO) {
         try {
             client.from("operators")
@@ -275,5 +299,11 @@ class SupabaseClient @Inject constructor() {
         val default_duration_hours: Int = 8,
         val allow_preset_change: Boolean = false,
         val locale: String = "it",
+        val cascade_max_rounds: Int = 2,
+        val cascade_timeout_seconds: Int = 25,
+        val cascade_delay_seconds: Int = 10,
+        val heartbeat_interval_minutes: Int = 5,
+        val default_session_hours: Int = 8,
+        val battery_alert_threshold: Int = 20,
     )
 }

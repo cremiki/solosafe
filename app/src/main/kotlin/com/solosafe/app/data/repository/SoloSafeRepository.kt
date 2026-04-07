@@ -32,6 +32,7 @@ class SoloSafeRepository @Inject constructor(
         dao.setConfig(AppConfigEntity("locale", config.locale))
     }
 
+
     // Heartbeat
     suspend fun sendHeartbeat(state: String, batteryPhone: Int, batteryTag: Int?, lat: Double?, lng: Double?) {
         val operatorId = getOperatorId() ?: return
