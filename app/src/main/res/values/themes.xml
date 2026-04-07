@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Splash theme used at launch (Theme.SplashScreen handles centered icon + bg) -->
+    <style name="Theme.SoloSafe.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/solosafe_red</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_solosafe</item>
+        <item name="postSplashScreenTheme">@style/Theme.SoloSafe</item>
+    </style>
+
     <style name="Theme.SoloSafe" parent="android:Theme.Material.NoActionBar">
         <item name="android:statusBarColor">@color/solosafe_red</item>
         <item name="android:navigationBarColor">#0F1117</item>

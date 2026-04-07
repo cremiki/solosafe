@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.runtime.*
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -24,6 +25,10 @@ import dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Install the system splash screen BEFORE super.onCreate() so it shows
+        // immediately at launch and is dismissed automatically when first
+        // composable frame is drawn.
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         try { enableEdgeToEdge() } catch (_: Exception) {}
 
