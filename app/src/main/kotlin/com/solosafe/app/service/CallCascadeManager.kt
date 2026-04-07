@@ -114,13 +114,17 @@ class CallCascadeManager(
     private fun forceEndCall() {
         // Strategy 1: TelecomManager.endCall() (API 28+, requires ANSWER_PHONE_CALLS)
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
-                ContextCompat.checkSelfPermission(context, Manifest.permission.ANSWER_PHONE_CALLS)
-                    == PackageManager.PERMISSION_GRANTED) {
-                val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
-                val ok = telecom?.endCall() ?: false
-                Log.d("SoloSafe", "CallCascade: TelecomManager.endCall=$ok")
-                if (ok) return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ANSWER_PHONE_CALLS) ==
+                    PackageManager.PERMISSION_GRANTED
+                if (!granted) {
+                    Log.w("SoloSafe", "CallCascade: ANSWER_PHONE_CALLS NOT granted — cannot end call. Cascade will fail.")
+                } else {
+                    val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
+                    val ok = telecom?.endCall() ?: false
+                    Log.d("SoloSafe", "CallCascade: TelecomManager.endCall=$ok")
+                    if (ok) return
+                }
             }
         } catch (e: Exception) {
             Log.w("SoloSafe", "CallCascade: TelecomManager.endCall failed: ${e.message}")
