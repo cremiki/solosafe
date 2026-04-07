@@ -111,7 +111,20 @@ class CallCascadeManager(
                 }
 
                 // Always try to hang up any leftover call
-                try { telecom?.endCall() } catch (_: Exception) {}
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.ANSWER_PHONE_CALLS)
+                            == PackageManager.PERMISSION_GRANTED) {
+                        val ok = telecom?.endCall() ?: false
+                        Log.d("SoloSafe", "CallCascade: endCall result=$ok")
+                    } else {
+                        Log.w("SoloSafe", "CallCascade: ANSWER_PHONE_CALLS not granted, cannot endCall")
+                    }
+                } catch (e: Exception) {
+                    Log.w("SoloSafe", "CallCascade: endCall failed: ${e.message}")
+                }
+                // Give the system a moment to release the call before next dial
+                delay(2_000L)
 
                 if (detectedAnswer) {
                     Log.d("SoloSafe", "CallCascade: ANSWERED by ${contact.name}")
