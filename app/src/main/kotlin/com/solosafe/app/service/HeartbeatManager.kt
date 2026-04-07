@@ -100,6 +100,10 @@ class HeartbeatManager(
         } catch (e: Exception) {
             Log.e("SoloSafe", "Heartbeat failed: ${e.message}")
         }
+
+        // Sync dashboard tunables on every heartbeat so changes propagate within
+        // one heartbeat cycle (5 min in protected, 30 min in standby).
+        try { supabaseClient.syncOperatorTunables(context, operatorId) } catch (_: Exception) {}
     }
 
     private fun getBatteryLevel(): Int {

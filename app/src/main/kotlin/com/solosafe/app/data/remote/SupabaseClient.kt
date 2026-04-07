@@ -191,18 +191,41 @@ class SupabaseClient @Inject constructor() {
                 .select { filter { eq("id", operatorId) } }
                 .decodeSingleOrNull<OperatorConfig>() ?: return@withContext
             val prefs = context.getSharedPreferences(com.solosafe.app.SoloSafeApp.PREFS_NAME, android.content.Context.MODE_PRIVATE)
-            prefs.edit()
+            val editor = prefs.edit()
                 .putInt("cascade_max_rounds", cfg.cascade_max_rounds)
                 .putInt("cascade_timeout_seconds", cfg.cascade_timeout_seconds)
                 .putInt("cascade_delay_seconds", cfg.cascade_delay_seconds)
                 .putInt("battery_alert_threshold", cfg.battery_alert_threshold)
                 .putInt("default_session_hours", cfg.default_session_hours)
-                .apply()
-            android.util.Log.d("SoloSafe", "Tunables synced: rounds=${cfg.cascade_max_rounds} timeout=${cfg.cascade_timeout_seconds}s delay=${cfg.cascade_delay_seconds}s")
+
+            // Also pull latest app_config_log entries for this operator (alarm thresholds etc.)
+            try {
+                val logEntries = client.from("app_config_log")
+                    .select {
+                        filter { eq("operator_id", operatorId) }
+                        order(column = "created_at", order = io.github.jan.supabase.postgrest.query.Order.DESCENDING)
+                        limit(50)
+                    }
+                    .decodeList<ConfigLogEntry>()
+                val seen = mutableSetOf<String>()
+                for (entry in logEntries) {
+                    if (entry.param_name in seen) continue
+                    seen += entry.param_name
+                    editor.putString("cfg_${entry.param_name}", entry.new_value)
+                }
+                android.util.Log.d("SoloSafe", "Tunables synced: rounds=${cfg.cascade_max_rounds} timeout=${cfg.cascade_timeout_seconds}s delay=${cfg.cascade_delay_seconds}s, ${seen.size} alarm params")
+            } catch (e: Exception) {
+                android.util.Log.w("SoloSafe", "app_config_log sync failed: ${e.message}")
+            }
+
+            editor.apply()
         } catch (e: Exception) {
             android.util.Log.w("SoloSafe", "syncOperatorTunables failed: ${e.message}")
         }
     }
+
+    @Serializable
+    data class ConfigLogEntry(val param_name: String, val new_value: String)
 
     suspend fun getOperatorConfig(configToken: String): OperatorConfig? = withContext(Dispatchers.IO) {
         try {
