@@ -5,8 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.telecom.TelecomManager
 import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -52,13 +54,18 @@ class CallCascadeManager(
         }
 
         scope.launch {
+            // Wait 10s after alarm before starting cascade (let SMS/Telegram fire first)
+            Log.d("SoloSafe", "CallCascade: waiting 10s before first call")
+            delay(10_000L)
+
             var answered = false
+            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+            val telecom = context.getSystemService(Context.TELECOM_SERVICE) as? TelecomManager
+
             for (contact in contacts) {
                 if (answered) break
 
                 Log.d("SoloSafe", "CallCascade: calling #${contact.position} ${contact.name} (${contact.phone})")
-
-                // Log CALL_INITIATED
                 logEvent(alarmEventId, operatorId, "CALL_INITIATED", alarmType,
                     recipientName = contact.name, recipientPhone = contact.phone, channel = "gsm")
 
@@ -77,25 +84,50 @@ class CallCascadeManager(
                     continue
                 }
 
-                // Wait for answer (simplified: wait 20s then check state)
-                delay(20000)
+                // Poll call state for up to 25s with 1s intervals
+                // OFFHOOK sustained > 5s = answered. Otherwise: hang up and continue.
+                var offhookSeconds = 0
+                var totalSeconds = 0
+                var detectedAnswer = false
+                while (totalSeconds < 25) {
+                    delay(1000)
+                    totalSeconds++
+                    @Suppress("DEPRECATION")
+                    val state = tm.callState
+                    if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
+                        offhookSeconds++
+                        if (offhookSeconds >= 5) {
+                            detectedAnswer = true
+                            break
+                        }
+                    } else {
+                        offhookSeconds = 0
+                    }
+                }
 
-                val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-                @Suppress("DEPRECATION")
-                val state = tm.callState
-
-                if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
-                    // Call answered
+                if (detectedAnswer) {
                     Log.d("SoloSafe", "CallCascade: ANSWERED by ${contact.name}")
                     logEvent(alarmEventId, operatorId, "CALL_ANSWERED", alarmType,
                         recipientName = contact.name, recipientPhone = contact.phone,
                         channel = "gsm", responseBy = contact.name)
                     answered = true
                 } else {
-                    // No answer
-                    Log.d("SoloSafe", "CallCascade: NO ANSWER from ${contact.name}")
+                    Log.d("SoloSafe", "CallCascade: NO ANSWER from ${contact.name}, ending call")
                     logEvent(alarmEventId, operatorId, "CALL_NO_ANSWER", alarmType,
                         recipientName = contact.name, recipientPhone = contact.phone, channel = "gsm")
+                    // Try to hang up the ongoing call (requires ANSWER_PHONE_CALLS on API 28+)
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && telecom != null) {
+                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.ANSWER_PHONE_CALLS)
+                                == PackageManager.PERMISSION_GRANTED) {
+                                telecom.endCall()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w("SoloSafe", "CallCascade: endCall failed: ${e.message}")
+                    }
+                    // Small grace period before next call
+                    delay(2000)
                 }
             }
 
