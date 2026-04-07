@@ -239,6 +239,10 @@ class SupabaseClient @Inject constructor() {
             }
 
             editor.apply()
+
+            // Also pull emergency contacts so SmsAlertManager and CallCascadeManager
+            // can read them from prefs without hitting the network on alarm
+            syncContacts(context, operatorId)
         } catch (e: Exception) {
             android.util.Log.w("SoloSafe", "syncOperatorTunables failed: ${e.message}")
         }
@@ -246,6 +250,42 @@ class SupabaseClient @Inject constructor() {
 
     @Serializable
     data class ConfigLogEntry(val param_name: String, val new_value: String)
+
+    @Serializable
+    data class EmergencyContactRow(
+        val id: String? = null,
+        val position: Int = 1,
+        val name: String = "",
+        val phone: String = "",
+        val sms_enabled: Boolean = true,
+        val telegram_enabled: Boolean = true,
+        val call_enabled: Boolean = true,
+        val telegram_chat_id: Long? = null,
+    )
+
+    /** Pull emergency contacts for this operator and persist as JSON in prefs */
+    suspend fun syncContacts(context: android.content.Context, operatorId: String) = withContext(Dispatchers.IO) {
+        try {
+            val contacts = client.from("emergency_contacts")
+                .select {
+                    filter { eq("operator_id", operatorId) }
+                    order(column = "position", order = io.github.jan.supabase.postgrest.query.Order.ASCENDING)
+                }
+                .decodeList<EmergencyContactRow>()
+            val json = kotlinx.serialization.json.Json.encodeToString(
+                kotlinx.serialization.builtins.ListSerializer(EmergencyContactRow.serializer()),
+                contacts,
+            )
+            val prefs = context.getSharedPreferences(com.solosafe.app.SoloSafeApp.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+            prefs.edit().putString("emergency_contacts_json", json).apply()
+            // Also update flat phone list used by older callers
+            val phones = contacts.filter { it.call_enabled }.joinToString(",") { it.phone }
+            prefs.edit().putString("authorized_numbers", phones).apply()
+            android.util.Log.d("SoloSafe", "Contacts synced: ${contacts.size} contacts")
+        } catch (e: Exception) {
+            android.util.Log.w("SoloSafe", "syncContacts failed: ${e.message}")
+        }
+    }
 
     suspend fun getOperatorConfig(configToken: String): OperatorConfig? = withContext(Dispatchers.IO) {
         try {
