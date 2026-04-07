@@ -84,27 +84,34 @@ class CallCascadeManager(
                     continue
                 }
 
-                // Wait 5s for call to start
-                delay(5_000L)
+                // Wait 3s for call to start
+                delay(3_000L)
 
-                // Monitor for max 25s. OFFHOOK = answered. IDLE after >8s = no answer.
+                // Poll up to 22s. OFFHOOK = answered. RINGING then IDLE = no answer.
                 var detectedAnswer = false
-                val startTime = System.currentTimeMillis()
-                while (System.currentTimeMillis() - startTime < 25_000L) {
+                var wasRinging = false
+                var i = 0
+                while (i < 22) {
                     @Suppress("DEPRECATION")
                     val state = tm.callState
+                    Log.d("SoloSafe", "CallCascade: poll[$i] state=$state contact=${contact.name}")
                     if (state == TelephonyManager.CALL_STATE_OFFHOOK) {
-                        delay(2_000L)
                         detectedAnswer = true
                         break
                     }
-                    if (state == TelephonyManager.CALL_STATE_IDLE &&
-                        System.currentTimeMillis() - startTime > 8_000L) {
-                        // Returned to IDLE after at least 8s = call ended without answer
+                    if (state == TelephonyManager.CALL_STATE_RINGING) {
+                        wasRinging = true
+                    }
+                    if (state == TelephonyManager.CALL_STATE_IDLE && wasRinging) {
+                        // Was ringing then went idle = call ended unanswered
                         break
                     }
                     delay(1_000L)
+                    i++
                 }
+
+                // Always try to hang up any leftover call
+                try { telecom?.endCall() } catch (_: Exception) {}
 
                 if (detectedAnswer) {
                     Log.d("SoloSafe", "CallCascade: ANSWERED by ${contact.name}")
@@ -112,14 +119,12 @@ class CallCascadeManager(
                         recipientName = contact.name, recipientPhone = contact.phone,
                         channel = "gsm", responseBy = contact.name)
                     answered = true
+                    break
                 } else {
-                    Log.d("SoloSafe", "CallCascade: NO ANSWER from ${contact.name}, ending call")
+                    Log.d("SoloSafe", "CallCascade: NO ANSWER from ${contact.name}, moving to next")
                     logEvent(alarmEventId, operatorId, "CALL_NO_ANSWER", alarmType,
                         recipientName = contact.name, recipientPhone = contact.phone, channel = "gsm")
-                    // Best-effort hangup
-                    try { telecom?.endCall() } catch (_: Exception) {}
-                    // Pause before next contact
-                    delay(3_000L)
+                    delay(2_000L)
                 }
             }
 
