@@ -146,10 +146,14 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
     }
 
     // Collect fall detector events (only PreAlarm — alarm sent by countdown)
-    // Sync tunables (cascade settings, battery threshold) from Supabase at startup
+    // Sync tunables (cascade settings, alarm thresholds) from Supabase.
+    // Initial sync + 30s polling so dashboard changes propagate quickly.
     LaunchedEffect(Unit) {
         if (operatorId.isNotBlank()) {
-            try { supabase.syncOperatorTunables(context, operatorId) } catch (_: Exception) {}
+            while (true) {
+                try { supabase.syncOperatorTunables(context, operatorId) } catch (_: Exception) {}
+                kotlinx.coroutines.delay(30_000L)
+            }
         }
     }
 

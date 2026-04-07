@@ -198,22 +198,42 @@ class SupabaseClient @Inject constructor() {
                 .putInt("battery_alert_threshold", cfg.battery_alert_threshold)
                 .putInt("default_session_hours", cfg.default_session_hours)
 
-            // Also pull latest app_config_log entries for this operator (alarm thresholds etc.)
+            // Pull latest app_config_log entries for this operator and write them
+            // to SharedPreferences using the EXACT keys that detectors read
+            // (fall_enabled, fall_threshold_g, immobility_enabled, immobility_seconds,
+            // malore_enabled, malore_angle). Strip "default:" prefix that
+            // self-logged settings rows sometimes add.
             try {
                 val logEntries = client.from("app_config_log")
                     .select {
                         filter { eq("operator_id", operatorId) }
                         order(column = "created_at", order = io.github.jan.supabase.postgrest.query.Order.DESCENDING)
-                        limit(50)
+                        limit(100)
                     }
                     .decodeList<ConfigLogEntry>()
+
+                // Walk newest→oldest, take first occurrence of each param
                 val seen = mutableSetOf<String>()
                 for (entry in logEntries) {
                     if (entry.param_name in seen) continue
                     seen += entry.param_name
-                    editor.putString("cfg_${entry.param_name}", entry.new_value)
+                    val raw = entry.new_value.removePrefix("default:")
+                    when (entry.param_name) {
+                        // Boolean toggles
+                        "fall_enabled", "immobility_enabled", "malore_enabled" -> {
+                            editor.putBoolean(entry.param_name, raw.equals("true", ignoreCase = true))
+                        }
+                        // Float thresholds
+                        "fall_threshold_g", "immobility_seconds", "malore_angle" -> {
+                            raw.toFloatOrNull()?.let { editor.putFloat(entry.param_name, it) }
+                        }
+                        else -> {
+                            // Unknown params: keep as string
+                            editor.putString(entry.param_name, raw)
+                        }
+                    }
                 }
-                android.util.Log.d("SoloSafe", "Tunables synced: rounds=${cfg.cascade_max_rounds} timeout=${cfg.cascade_timeout_seconds}s delay=${cfg.cascade_delay_seconds}s, ${seen.size} alarm params")
+                android.util.Log.d("SoloSafe", "Tunables synced: rounds=${cfg.cascade_max_rounds} timeout=${cfg.cascade_timeout_seconds}s delay=${cfg.cascade_delay_seconds}s, ${seen.size} alarm params from log")
             } catch (e: Exception) {
                 android.util.Log.w("SoloSafe", "app_config_log sync failed: ${e.message}")
             }
