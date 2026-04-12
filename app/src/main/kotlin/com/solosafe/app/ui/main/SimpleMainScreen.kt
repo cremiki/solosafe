@@ -121,11 +121,18 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
             // CALL CASCADE: GSM calls to emergency contacts
             try {
                 if (FeatureManager.isPro(context)) {
-                    val authNumbers = context.getSharedPreferences(com.solosafe.app.SoloSafeApp.PREFS_NAME, android.content.Context.MODE_PRIVATE)
-                        .getString("authorized_numbers", "")?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+                    val prefs = context.getSharedPreferences(com.solosafe.app.SoloSafeApp.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                    val authNumbersStr = prefs.getString("authorized_numbers", "")
+                    Log.d("SoloSafe", "ALARM: authorized_numbers from SharedPreferences = '${authNumbersStr}'")
+                    val authNumbers = authNumbersStr?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+                    Log.d("SoloSafe", "ALARM: after split and filter: ${authNumbers.size} numbers — $authNumbers")
                     if (authNumbers.isNotEmpty()) {
                         val contacts = authNumbers.mapIndexed { i, phone ->
                             com.solosafe.app.service.CallCascadeManager.Contact(name = "Contatto ${i+1}", phone = phone, position = i+1)
+                        }
+                        Log.d("SoloSafe", "ALARM: created ${contacts.size} Contact objects")
+                        contacts.forEachIndexed { i, c ->
+                            Log.d("SoloSafe", "  Contact[$i]: name='${c.name}' phone='${c.phone}'")
                         }
                         val cascade = com.solosafe.app.service.CallCascadeManager(context, supabase)
                         cascade.startCascade(alarmId, operatorId, operatorName, type, contacts, gps?.first, gps?.second)

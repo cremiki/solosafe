@@ -326,9 +326,26 @@ class SupabaseClient @Inject constructor() {
                 dbContacts,
             )
             prefs.edit().putString("emergency_contacts_json", json).apply()
+
+            // DEBUG: Log every contact before filtering
+            dbContacts.forEachIndexed { idx, c ->
+                android.util.Log.d("SoloSafe", "  [BEFORE FILTER] contact[${idx}] pos=${c.position} name='${c.name}' phone='${c.phone}' call_enabled=${c.call_enabled} (type=${c.call_enabled.javaClass.simpleName})")
+            }
+
             val phones = dbContacts.filter { it.call_enabled }.joinToString(",") { it.phone }
+
+            // DEBUG: Log result after filtering
+            val filtered = dbContacts.filter { it.call_enabled }
+            android.util.Log.d("SoloSafe", "  [AFTER FILTER] ${filtered.size} contacts passed filter")
+            filtered.forEachIndexed { idx, c ->
+                android.util.Log.d("SoloSafe", "  [FILTERED] contact[${idx}] pos=${c.position} name='${c.name}' phone='${c.phone}'")
+            }
+
+            // DEBUG: Log the final string
+            android.util.Log.d("SoloSafe", "  [AUTHORIZED_NUMBERS] '${phones}' (${phones.split(",").size} phones)")
+
             prefs.edit().putString("authorized_numbers", phones).apply()
-            android.util.Log.d("SoloSafe", "Contacts synced: ${dbContacts.size} contacts")
+            android.util.Log.d("SoloSafe", "Contacts synced: ${dbContacts.size} total, ${filtered.size} with call_enabled=true")
         } catch (e: Exception) {
             android.util.Log.w("SoloSafe", "syncContacts failed: ${e.message}")
         }
