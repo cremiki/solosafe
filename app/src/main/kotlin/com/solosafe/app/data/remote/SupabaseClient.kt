@@ -263,27 +263,104 @@ class SupabaseClient @Inject constructor() {
         val telegram_chat_id: Long? = null,
     )
 
-    /** Pull emergency contacts for this operator and persist as JSON in prefs */
+    /** Pull emergency contacts for this operator and persist as JSON in prefs.
+     *  Also pushes any local-only authorized_numbers to Supabase so the
+     *  dashboard sees them. */
     suspend fun syncContacts(context: android.content.Context, operatorId: String) = withContext(Dispatchers.IO) {
         try {
-            val contacts = client.from("emergency_contacts")
+            val prefs = context.getSharedPreferences(com.solosafe.app.SoloSafeApp.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+
+            // 1) Fetch what's already in DB
+            var dbContacts = client.from("emergency_contacts")
                 .select {
                     filter { eq("operator_id", operatorId) }
                     order(column = "position", order = io.github.jan.supabase.postgrest.query.Order.ASCENDING)
                 }
                 .decodeList<EmergencyContactRow>()
+
+            // 2) Compare with local authorized_numbers and upsert any orphan
+            val localPhones = prefs.getString("authorized_numbers", "")?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+            val dbPhones = dbContacts.map { it.phone.replace(" ", "") }.toSet()
+            val missing = localPhones.filter { it.replace(" ", "") !in dbPhones }
+            if (missing.isNotEmpty()) {
+                val nextPos = (dbContacts.maxOfOrNull { it.position } ?: 0) + 1
+                missing.forEachIndexed { i, phone ->
+                    try {
+                        client.from("emergency_contacts").insert(buildJsonObject {
+                            put("operator_id", operatorId)
+                            put("position", nextPos + i)
+                            put("name", "Contatto ${nextPos + i}")
+                            put("phone", phone)
+                            put("preferred_channel", "sms")
+                            put("sms_enabled", true)
+                            put("telegram_enabled", true)
+                            put("call_enabled", true)
+                            put("dtmf_required", false)
+                            put("relation", "manager")
+                        })
+                    } catch (e: Exception) {
+                        android.util.Log.w("SoloSafe", "Failed to upsert orphan contact $phone: ${e.message}")
+                    }
+                }
+                // Refetch with the new rows
+                dbContacts = client.from("emergency_contacts")
+                    .select {
+                        filter { eq("operator_id", operatorId) }
+                        order(column = "position", order = io.github.jan.supabase.postgrest.query.Order.ASCENDING)
+                    }
+                    .decodeList<EmergencyContactRow>()
+                android.util.Log.d("SoloSafe", "Pushed ${missing.size} orphan contacts to Supabase")
+            }
+
+            // 3) Persist as JSON + flat list
             val json = kotlinx.serialization.json.Json.encodeToString(
                 kotlinx.serialization.builtins.ListSerializer(EmergencyContactRow.serializer()),
-                contacts,
+                dbContacts,
             )
-            val prefs = context.getSharedPreferences(com.solosafe.app.SoloSafeApp.PREFS_NAME, android.content.Context.MODE_PRIVATE)
             prefs.edit().putString("emergency_contacts_json", json).apply()
-            // Also update flat phone list used by older callers
-            val phones = contacts.filter { it.call_enabled }.joinToString(",") { it.phone }
+            val phones = dbContacts.filter { it.call_enabled }.joinToString(",") { it.phone }
             prefs.edit().putString("authorized_numbers", phones).apply()
-            android.util.Log.d("SoloSafe", "Contacts synced: ${contacts.size} contacts")
+            android.util.Log.d("SoloSafe", "Contacts synced: ${dbContacts.size} contacts")
         } catch (e: Exception) {
             android.util.Log.w("SoloSafe", "syncContacts failed: ${e.message}")
+        }
+    }
+
+    /** Insert a single emergency contact (called from app UI) */
+    suspend fun addEmergencyContact(operatorId: String, phone: String, name: String = "") = withContext(Dispatchers.IO) {
+        try {
+            val existing = client.from("emergency_contacts")
+                .select { filter { eq("operator_id", operatorId) } }
+                .decodeList<EmergencyContactRow>()
+            val nextPos = (existing.maxOfOrNull { it.position } ?: 0) + 1
+            client.from("emergency_contacts").insert(buildJsonObject {
+                put("operator_id", operatorId)
+                put("position", nextPos)
+                put("name", name.ifBlank { "Contatto $nextPos" })
+                put("phone", phone)
+                put("preferred_channel", "sms")
+                put("sms_enabled", true)
+                put("telegram_enabled", true)
+                put("call_enabled", true)
+                put("dtmf_required", false)
+                put("relation", "manager")
+            })
+        } catch (e: Exception) {
+            android.util.Log.w("SoloSafe", "addEmergencyContact failed: ${e.message}")
+        }
+    }
+
+    /** Delete an emergency contact by phone (called from app UI) */
+    suspend fun removeEmergencyContact(operatorId: String, phone: String) = withContext(Dispatchers.IO) {
+        try {
+            client.from("emergency_contacts").delete {
+                filter {
+                    eq("operator_id", operatorId)
+                    eq("phone", phone)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("SoloSafe", "removeEmergencyContact failed: ${e.message}")
         }
     }
 

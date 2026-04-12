@@ -194,6 +194,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                             onClick = {
                                 authNumbers = authNumbers - number
                                 prefs.edit().putString("authorized_numbers", authNumbers.joinToString(",")).commit()
+                                scope.launch { try { supabase.removeEmergencyContact(operatorId, number) } catch (_: Exception) {} }
                             },
                             modifier = Modifier.size(28.dp),
                         ) {
@@ -219,8 +220,10 @@ fun SettingsScreen(onBack: () -> Unit) {
                     Spacer(modifier = Modifier.width(8.dp))
                     IconButton(onClick = {
                         if (newNumber.isNotBlank()) {
-                            authNumbers = authNumbers + newNumber.trim()
+                            val phone = newNumber.trim()
+                            authNumbers = authNumbers + phone
                             prefs.edit().putString("authorized_numbers", authNumbers.joinToString(",")).commit()
+                            scope.launch { try { supabase.addEmergencyContact(operatorId, phone) } catch (_: Exception) {} }
                             newNumber = ""
                         }
                     }) {
