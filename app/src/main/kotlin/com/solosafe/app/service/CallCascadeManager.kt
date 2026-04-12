@@ -56,6 +56,13 @@ class CallCascadeManager(
         val timeoutSec = prefs.getInt("cascade_timeout_seconds", 25).coerceIn(10, 60)
         val delaySec = prefs.getInt("cascade_delay_seconds", 10).coerceIn(0, 30)
 
+        // Debug: log configured tunables
+        Log.d("SoloSafe", "CallCascade: CONFIGURATION — maxRounds=$maxRounds (${if (maxRounds == prefs.getInt("cascade_max_rounds", -999)) "from prefs" else "FALLBACK DEFAULT"}), timeout=${timeoutSec}s, delay=${delaySec}s")
+        Log.d("SoloSafe", "CallCascade: CONTACTS LOADED — count=${contacts.size}")
+        contacts.forEachIndexed { idx, c ->
+            Log.d("SoloSafe", "  [$idx] position=${c.position} name='${c.name}' phone='${c.phone}'")
+        }
+
         scope.launch {
             Log.d("SoloSafe", "CallCascade: waiting ${delaySec}s before first call (rounds=$maxRounds, timeout=${timeoutSec}s)")
             delay(delaySec * 1000L)
@@ -64,10 +71,10 @@ class CallCascadeManager(
             var answered = false
 
             roundLoop@ for (round in 1..maxRounds) {
-                Log.d("SoloSafe", "CallCascade: ===== round $round/$maxRounds =====")
+                Log.d("SoloSafe", "CallCascade: ===== ROUND $round/$maxRounds START =====")
 
-                for (contact in contacts) {
-                    Log.d("SoloSafe", "CallCascade: calling #${contact.position} ${contact.name} (${contact.phone})")
+                for ((contactIdx, contact) in contacts.withIndex()) {
+                    Log.d("SoloSafe", "CallCascade: Calling contatto ${contactIdx + 1}/${contacts.size}: ${contact.name} ${contact.phone}")
                     logEvent(alarmEventId, operatorId, "CALL_INITIATED", alarmType,
                         recipientName = contact.name, recipientPhone = contact.phone, channel = "gsm")
 
@@ -118,15 +125,18 @@ class CallCascadeManager(
                         recipientName = contact.name, recipientPhone = contact.phone, channel = "gsm")
                 }
 
+                Log.d("SoloSafe", "CallCascade: ===== ROUND $round/$maxRounds END (no answer) =====")
                 if (round < maxRounds) {
-                    Log.d("SoloSafe", "CallCascade: round $round complete, no answer — pause 5s before next round")
+                    Log.d("SoloSafe", "CallCascade: round $round complete — pause 5s before next round")
                     delay(5_000L)
                 }
             }
 
             if (!answered) {
-                Log.d("SoloSafe", "CallCascade: all rounds exhausted, triggering Twilio fallback")
+                Log.d("SoloSafe", "CallCascade: ===== ALL ROUNDS EXHAUSTED ($maxRounds/$maxRounds) — TRIGGERING TWILIO FALLBACK =====")
                 triggerTwilioFallback(operatorId, operatorName, alarmType, lat, lng, alarmEventId)
+            } else {
+                Log.d("SoloSafe", "CallCascade: ===== CASCADE STOPPED — CALL ANSWERED =====")
             }
         }
     }

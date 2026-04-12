@@ -191,6 +191,10 @@ class SupabaseClient @Inject constructor() {
                 .select { filter { eq("id", operatorId) } }
                 .decodeSingleOrNull<OperatorConfig>() ?: return@withContext
             val prefs = context.getSharedPreferences(com.solosafe.app.SoloSafeApp.PREFS_NAME, android.content.Context.MODE_PRIVATE)
+
+            // DEBUG: Log DB values before saving
+            android.util.Log.d("SoloSafe", "syncOperatorTunables: DB values — cascade_max_rounds=${cfg.cascade_max_rounds} (type=${cfg.cascade_max_rounds.javaClass.simpleName}), timeout=${cfg.cascade_timeout_seconds}s, delay=${cfg.cascade_delay_seconds}s")
+
             val editor = prefs.edit()
                 .putInt("cascade_max_rounds", cfg.cascade_max_rounds)
                 .putInt("cascade_timeout_seconds", cfg.cascade_timeout_seconds)
@@ -239,6 +243,10 @@ class SupabaseClient @Inject constructor() {
             }
 
             editor.apply()
+
+            // DEBUG: Verify saved values
+            val saved = prefs.getInt("cascade_max_rounds", -999)
+            android.util.Log.d("SoloSafe", "syncOperatorTunables: SAVED to SharedPreferences — cascade_max_rounds=$saved (type=${saved.javaClass.simpleName})")
 
             // Also pull emergency contacts so SmsAlertManager and CallCascadeManager
             // can read them from prefs without hitting the network on alarm
