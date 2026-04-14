@@ -24,6 +24,7 @@ class CallCascadeManager(
         val name: String,
         val phone: String,
         val position: Int,
+        val callEnabled: Boolean = true,
     )
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -33,12 +34,33 @@ class CallCascadeManager(
         operatorId: String,
         operatorName: String,
         alarmType: String,
-        contacts: List<Contact>,
+        contacts: List<Contact> = emptyList(),  // Deprecated: ignored, uses emergency_contacts_json
         lat: Double?,
         lng: Double?,
     ) {
-        if (contacts.isEmpty()) {
-            Log.d("SoloSafe", "CallCascade: no contacts, triggering Twilio fallback")
+        // Read tunables from prefs (synced from dashboard via syncOperatorTunables)
+        val prefs = context.getSharedPreferences(com.solosafe.app.SoloSafeApp.PREFS_NAME, Context.MODE_PRIVATE)
+        val maxRounds = prefs.getInt("cascade_max_rounds", 2).coerceAtLeast(1)
+        val timeoutSec = prefs.getInt("cascade_timeout_seconds", 25).coerceIn(10, 60)
+        val delaySec = prefs.getInt("cascade_delay_seconds", 10).coerceIn(0, 30)
+
+        // Read emergency contacts from JSON (includes all contacts with call_enabled flag)
+        val contactsJson = prefs.getString("emergency_contacts_json", "[]") ?: "[]"
+        val allContacts = try {
+            kotlinx.serialization.json.Json.decodeFromString<List<com.solosafe.app.data.remote.SupabaseClient.EmergencyContactRow>>(contactsJson)
+        } catch (e: Exception) {
+            Log.w("SoloSafe", "CallCascade: failed to parse emergency_contacts_json: ${e.message}")
+            emptyList()
+        }
+
+        // Filter for call_enabled and convert to Contact objects, ordered by position
+        val cascadeContacts = allContacts
+            .filter { it.call_enabled }
+            .sortedBy { it.position }
+            .map { Contact(name = it.name, phone = it.phone, position = it.position, callEnabled = it.call_enabled) }
+
+        if (cascadeContacts.isEmpty()) {
+            Log.d("SoloSafe", "CallCascade: no contacts with call_enabled=true, triggering Twilio fallback")
             triggerTwilioFallback(operatorId, operatorName, alarmType, lat, lng, alarmEventId)
             return
         }
@@ -50,17 +72,11 @@ class CallCascadeManager(
             return
         }
 
-        // Read tunables from prefs (synced from dashboard via syncOperatorTunables)
-        val prefs = context.getSharedPreferences(com.solosafe.app.SoloSafeApp.PREFS_NAME, Context.MODE_PRIVATE)
-        val maxRounds = prefs.getInt("cascade_max_rounds", 2).coerceAtLeast(1)
-        val timeoutSec = prefs.getInt("cascade_timeout_seconds", 25).coerceIn(10, 60)
-        val delaySec = prefs.getInt("cascade_delay_seconds", 10).coerceIn(0, 30)
-
         // Debug: log configured tunables
-        Log.d("SoloSafe", "CallCascade: CONFIGURATION — maxRounds=$maxRounds (${if (maxRounds == prefs.getInt("cascade_max_rounds", -999)) "from prefs" else "FALLBACK DEFAULT"}), timeout=${timeoutSec}s, delay=${delaySec}s")
-        Log.d("SoloSafe", "CallCascade: CONTACTS LOADED — count=${contacts.size}")
-        contacts.forEachIndexed { idx, c ->
-            Log.d("SoloSafe", "  [$idx] position=${c.position} name='${c.name}' phone='${c.phone}'")
+        Log.d("SoloSafe", "CallCascade: CONFIGURATION — maxRounds=$maxRounds, timeout=${timeoutSec}s, delay=${delaySec}s")
+        Log.d("SoloSafe", "CallCascade: CONTACTS FOR CASCADE — count=${cascadeContacts.size} (from emergency_contacts_json)")
+        cascadeContacts.forEachIndexed { idx, c ->
+            Log.d("SoloSafe", "  [$idx] position=${c.position} name='${c.name}' phone='${c.phone}' call_enabled=${c.callEnabled}")
         }
 
         scope.launch {
@@ -73,8 +89,8 @@ class CallCascadeManager(
             roundLoop@ for (round in 1..maxRounds) {
                 Log.d("SoloSafe", "CallCascade: ===== ROUND $round/$maxRounds START =====")
 
-                for ((contactIdx, contact) in contacts.withIndex()) {
-                    Log.d("SoloSafe", "CallCascade: Calling contatto ${contactIdx + 1}/${contacts.size}: ${contact.name} ${contact.phone}")
+                for ((contactIdx, contact) in cascadeContacts.withIndex()) {
+                    Log.d("SoloSafe", "CallCascade: Calling contatto ${contactIdx + 1}/${cascadeContacts.size}: ${contact.name} ${contact.phone}")
                     logEvent(alarmEventId, operatorId, "CALL_INITIATED", alarmType,
                         recipientName = contact.name, recipientPhone = contact.phone, channel = "gsm")
 

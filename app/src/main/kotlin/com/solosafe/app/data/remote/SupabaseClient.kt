@@ -326,6 +326,8 @@ class SupabaseClient @Inject constructor() {
                 dbContacts,
             )
             prefs.edit().putString("emergency_contacts_json", json).apply()
+            val callEnabled = dbContacts.filter { it.call_enabled }.size
+            android.util.Log.d("SoloSafe", "syncContacts: saved emergency_contacts_json with ${dbContacts.size} total contacts, $callEnabled with call_enabled=true")
 
             // DEBUG: Log every contact before filtering
             dbContacts.forEachIndexed { idx, c ->

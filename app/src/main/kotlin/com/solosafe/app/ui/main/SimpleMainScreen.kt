@@ -121,30 +121,15 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
             // CALL CASCADE: GSM calls to emergency contacts
             try {
                 if (FeatureManager.isPro(context)) {
-                    val prefs = context.getSharedPreferences(com.solosafe.app.SoloSafeApp.PREFS_NAME, android.content.Context.MODE_PRIVATE)
-                    val authNumbersStr = prefs.getString("authorized_numbers", "")
-                    Log.d("SoloSafe", "[ALARM] authorized_numbers raw = '${authNumbersStr}'")
-                    val authNumbers = authNumbersStr?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
-                    Log.d("SoloSafe", "[ALARM] after split: ${authNumbers.size} numbers")
-                    authNumbers.forEachIndexed { i, num ->
-                        Log.d("SoloSafe", "[ALARM]   [$i] = '$num'")
-                    }
-                    if (authNumbers.isNotEmpty()) {
-                        val contacts = authNumbers.mapIndexed { i, phone ->
-                            com.solosafe.app.service.CallCascadeManager.Contact(name = "Contatto ${i+1}", phone = phone, position = i+1)
-                        }
-                        Log.d("SoloSafe", "[ALARM] created ${contacts.size} Contact objects for cascade")
-                        contacts.forEachIndexed { i, c ->
-                            Log.d("SoloSafe", "[ALARM]   Contact[$i]: '${c.name}' → '${c.phone}'")
-                        }
-                        val cascade = com.solosafe.app.service.CallCascadeManager(context, supabase)
-                        cascade.startCascade(alarmId, operatorId, operatorName, type, contacts, gps?.first, gps?.second)
-                        // Stop alarm beep just before first call so it doesn't
-                        // overlap with the conversation
-                        scope.launch {
-                            kotlinx.coroutines.delay(9_500L)
-                            alarmSound.stop()
-                        }
+                    // CallCascadeManager now reads emergency_contacts_json directly
+                    val cascade = com.solosafe.app.service.CallCascadeManager(context, supabase)
+                    Log.d("SoloSafe", "[ALARM] triggering GSM cascade (contacts loaded from emergency_contacts_json)")
+                    cascade.startCascade(alarmId, operatorId, operatorName, type, emptyList(), gps?.first, gps?.second)
+                    // Stop alarm beep just before first call so it doesn't
+                    // overlap with the conversation
+                    scope.launch {
+                        kotlinx.coroutines.delay(9_500L)
+                        alarmSound.stop()
                     }
                 }
                 // Always notify alarm service (for Telegram)
