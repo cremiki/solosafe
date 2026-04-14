@@ -91,6 +91,20 @@ class CallCascadeManager(
 
                 for ((contactIdx, contact) in cascadeContacts.withIndex()) {
                     Log.d("SoloSafe", "CallCascade: Calling contatto ${contactIdx + 1}/${cascadeContacts.size}: ${contact.name} ${contact.phone}")
+
+                    // FIX: Wait for phone to be in IDLE state before calling
+                    // Previous call may still be OFFHOOK, causing false "answered" detection
+                    @Suppress("DEPRECATION")
+                    var waited = 0
+                    while (tm.callState != TelephonyManager.CALL_STATE_IDLE && waited < 10) {
+                        Log.d("SoloSafe", "CallCascade: waiting for IDLE (state=${tm.callState}, waited=${waited}s)")
+                        delay(1_000L)
+                        waited++
+                    }
+                    if (tm.callState != TelephonyManager.CALL_STATE_IDLE) {
+                        Log.w("SoloSafe", "CallCascade: phone still not IDLE after 10s, proceeding anyway")
+                    }
+
                     logEvent(alarmEventId, operatorId, "CALL_INITIATED", alarmType,
                         recipientName = contact.name, recipientPhone = contact.phone, channel = "gsm")
 
@@ -104,8 +118,9 @@ class CallCascadeManager(
                         continue
                     }
 
-                    // Warmup: 4s to let the call register as OFFHOOK
-                    delay(4_000L)
+                    // FIX: Increased warmup from 4s to 6s to allow OS time to register outgoing call
+                    // and stabilize TelephonyManager state before polling
+                    delay(6_000L)
 
                     // Poll for (timeoutSec - 4)s. If state IDLE → rejected/missed.
                     // If still active at the timeout, assume the call was answered.
@@ -136,7 +151,13 @@ class CallCascadeManager(
 
                     // Not answered → ensure call is closed and move on quickly
                     forceEndCall()
-                    delay(1_000L)
+
+                    // FIX: Add 5s stabilization pause between calls
+                    // TelephonyManager may still report OFFHOOK after forceEndCall(),
+                    // causing false "answered" detection on the next call
+                    Log.d("SoloSafe", "CallCascade: stabilization pause (5s) before next contact")
+                    delay(5_000L)
+
                     logEvent(alarmEventId, operatorId, "CALL_NO_ANSWER", alarmType,
                         recipientName = contact.name, recipientPhone = contact.phone, channel = "gsm")
                 }
