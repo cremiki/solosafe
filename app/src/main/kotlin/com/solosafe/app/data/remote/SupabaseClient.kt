@@ -145,8 +145,19 @@ class SupabaseClient @Inject constructor() {
         }
     }
 
-    /** Notify alarm service for call cascade (fire-and-forget) */
-    fun notifyAlarmService(operatorId: String, operatorName: String, type: String, lat: Double?, lng: Double?) {
+    /**
+     * Notify alarm service for call cascade.
+     * Includes sms_native_reached list for server-side fallback SMS filtering.
+     * (fire-and-forget)
+     */
+    fun notifyAlarmService(
+        operatorId: String,
+        operatorName: String,
+        type: String,
+        lat: Double?,
+        lng: Double?,
+        smsNativeReached: List<String> = emptyList(),
+    ) {
         @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
         GlobalScope.launch(Dispatchers.IO) {
             try {
@@ -157,10 +168,26 @@ class SupabaseClient @Inject constructor() {
                 conn.doOutput = true
                 conn.connectTimeout = 5000
                 conn.readTimeout = 5000
-                val body = """{"operator_id":"$operatorId","type":"$type","lat":${lat ?: "null"},"lng":${lng ?: "null"},"operator_name":"$operatorName"}"""
+
+                // Build JSON payload with sms_native_reached array
+                val payload = buildJsonObject {
+                    put("operator_id", operatorId)
+                    put("type", type)
+                    put("operator_name", operatorName)
+                    lat?.let { put("lat", it) }
+                    lng?.let { put("lng", it) }
+                    put("sms_native_reached", kotlinx.serialization.json.buildJsonArray {
+                        smsNativeReached.forEach { add(it) }
+                    })
+                }
+
+                val body = kotlinx.serialization.json.Json.encodeToString(
+                    kotlinx.serialization.json.JsonElement.serializer(),
+                    payload
+                )
                 conn.outputStream.write(body.toByteArray())
                 val code = conn.responseCode
-                Log.d("SoloSafe", "Alarm service notified: $code")
+                Log.d("SoloSafe", "Alarm service notified (${smsNativeReached.size} native SMS reached): $code")
                 conn.disconnect()
             } catch (e: Exception) {
                 Log.w("SoloSafe", "Alarm service notify failed: ${e.message}")

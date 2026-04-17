@@ -108,12 +108,17 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                 Log.e("SoloSafe", "Alarm INSERT failed: ${e.message}")
             }
 
-            // SMS (independent, don't block other actions)
+            // SMS Level 1: Native GSM (always first, returns list of reached contacts)
+            val smsNativeReached = mutableListOf<String>()
             try {
                 if (FeatureManager.canSendExternalNotification(context, type)) {
-                    withContext(Dispatchers.IO) { SmsAlertManager.sendAlertSms(context, type, operatorName, gps?.first, gps?.second) }
+                    val reached = withContext(Dispatchers.IO) {
+                        SmsAlertManager.sendAlertSms(context, type, operatorName, gps?.first, gps?.second)
+                    }
+                    smsNativeReached.addAll(reached)
+                    Log.d("SoloSafe", "SMS native: ${smsNativeReached.size} contacts reached")
                 }
-            } catch (e: Exception) { Log.e("SoloSafe", "SMS failed: ${e.message}") }
+            } catch (e: Exception) { Log.e("SoloSafe", "SMS native failed: ${e.message}") }
 
             // NON-CRITICAL: logging (fire-and-forget)
             try { supabase.logAlarmEvent(alarmId, operatorId, "ALARM_TRIGGERED", type) } catch (_: Exception) {}
@@ -132,8 +137,9 @@ fun SimpleMainScreen(onOpenSettings: () -> Unit = {}) {
                         alarmSound.stop()
                     }
                 }
-                // Always notify alarm service (for Telegram)
-                supabase.notifyAlarmService(operatorId, operatorName, type, gps?.first, gps?.second)
+                // SMS Level 2 + Telegram: Notify alarm service for fallback SMS + Telegram
+                // Passes sms_native_reached list so server only sends fallback SMS to unreached contacts
+                supabase.notifyAlarmService(operatorId, operatorName, type, gps?.first, gps?.second, smsNativeReached)
             } catch (_: Exception) {}
 
             Log.d("SoloSafe", "Alarm pipeline complete: $type")
