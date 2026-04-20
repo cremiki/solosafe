@@ -161,7 +161,7 @@ class SupabaseClient @Inject constructor() {
         @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
         GlobalScope.launch(Dispatchers.IO) {
             try {
-                val url = java.net.URL("http://46.224.181.59:3001/alarm")
+                val url = java.net.URL("https://46.224.181.59:8443/alarm")
                 val conn = url.openConnection() as java.net.HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json")
