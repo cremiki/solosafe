@@ -31,7 +31,16 @@ class SoloSafeService : Service() {
             )
             ACTION_STOP -> stopSelf()
             ACTION_SOS -> triggerSos()
-            ACTION_PLACE_CALL -> placeCall(intent.getStringExtra(EXTRA_PHONE) ?: return START_STICKY)
+            ACTION_PLACE_CALL -> {
+                val phone = intent.getStringExtra(EXTRA_PHONE) ?: return START_STICKY
+                val notification = buildNotification(
+                    title = "Cascata vocale",
+                    text = "Chiamata a $phone",
+                    ongoing = true,
+                )
+                startForegroundCompat(notification)
+                placeCall(phone)
+            }
         }
         return START_STICKY
     }
