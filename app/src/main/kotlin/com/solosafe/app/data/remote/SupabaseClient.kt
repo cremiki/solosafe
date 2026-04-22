@@ -177,7 +177,7 @@ class SupabaseClient @Inject constructor() {
                     lat?.let { put("lat", it) }
                     lng?.let { put("lng", it) }
                     put("sms_native_reached", kotlinx.serialization.json.buildJsonArray {
-                        smsNativeReached.forEach { add(it) }
+                        smsNativeReached.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) }
                     })
                 }
 

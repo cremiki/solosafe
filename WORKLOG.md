@@ -21,6 +21,18 @@
 
 ---
 
+## 2026-04-22 2335 — Primo build e install app Android: 3 smoke test verdi
+
+- **Obiettivo**: verificare che l'app Android compili dalla riga di comando e funzioni sul telefono collegato.
+- **File toccati**: app/src/main/kotlin/com/solosafe/app/data/remote/SupabaseClient.kt (1 riga), app/src/main/kotlin/com/solosafe/app/service/SmsAlertManager.kt (1 riga), WORKLOG.md (aggiornamento).
+- **Verificato con**: SMOKE-APP-01 (build passato), SMOKE-APP-02 (install passato), SMOKE-APP-04 (log attivi con operator_id).
+- **Esito**: completato.
+- **Snapshot pre-sessione**: 96af4ed.
+- **Git push eseguito?**: no, solo commit locale (gestione push da Terminale dopo accettazione modifiche).
+- **Note**: risolti 2 errori Kotlin preesistenti che impedivano build dalla CLI (NETWORK_TYPE_NONE non esistente, add senza JsonPrimitive). JAVA_HOME e ANDROID_HOME impostati solo per sessione.
+
+---
+
 ## 2026-04-22 — Setup guardrails iniziali
 
 - **Obiettivo**: introdurre i 6 file di protocollo (`CLAUDE.md`, `CONTEXT.md`, `SMOKE_TESTS.md`, `WORKLOG.md`, `START_HERE.md`, `DEPLOY.md`) in ogni repo SoloSafe, per vincolare le sessioni future a un metodo disciplinato.

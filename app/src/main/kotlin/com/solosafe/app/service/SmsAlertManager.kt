@@ -88,7 +88,7 @@ Rispondi o chiama per prendere in carico."""
     private fun isGsmAvailable(context: Context): Boolean {
         try {
             val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-            return tm?.networkType != TelephonyManager.NETWORK_TYPE_NONE
+            return tm?.networkType != TelephonyManager.NETWORK_TYPE_UNKNOWN
         } catch (e: Exception) {
             Log.w("SoloSafe", "Failed to check GSM: ${e.message}")
             return false
